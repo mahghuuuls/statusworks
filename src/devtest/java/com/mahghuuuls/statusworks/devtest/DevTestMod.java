@@ -109,7 +109,8 @@ public class DevTestMod {
     /** Adds callbacks that log each status point as {@code [stw-devtest] <point> <context>}. */
     private static StatusDefinition.Builder logged(StatusDefinition.Builder builder) {
         return builder
-                .onApplied(c -> LOGGER.info("[stw-devtest] applied {}", c))
+                .onApplied(c -> LOGGER.info("[stw-devtest] applied {}{}", c,
+                        c.sourceEntity() == null ? "" : " sourceEntity=" + c.sourceEntity().getName()))
                 .onQuantityChanged(c -> LOGGER.info("[stw-devtest] quantity_changed {}", c))
                 .onRemoved(c -> LOGGER.info("[stw-devtest] removed {}", c));
     }

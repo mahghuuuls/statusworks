@@ -49,7 +49,7 @@ public final class TickDriver {
     /** Starts processing an entity that just received state; its current tick counter is the baseline. */
     public void track(EntityLivingBase entity) {
         if (entity.world != null && !entity.world.isRemote) {
-            active.add(entity, entity.ticksExisted);
+            active.add(entity.world, entity, entity.ticksExisted);
         }
     }
 
@@ -66,6 +66,11 @@ public final class TickDriver {
         long start = System.nanoTime();
         for (ActiveEntities.Tracked tracked : active.snapshot(event.world)) {
             EntityLivingBase entity = tracked.entity;
+            if (entity.world != event.world) {
+                // Filed under a world the entity has left (state applied mid-transfer); follow the entity.
+                active.moveToCurrentWorld(event.world, tracked);
+                continue;
+            }
             if (!entity.isEntityAlive()) {
                 continue;
             }
@@ -140,7 +145,9 @@ public final class TickDriver {
         }
         statuses.reportLoad(entity, state);
         if (!state.isEmpty()) {
-            track(entity);
+            // The event's world, not entity.world: a player changing dimension joins the new world before
+            // PlayerList.transferEntityToWorld sets its world field.
+            active.add(event.getWorld(), entity, entity.ticksExisted);
         }
     }
 
