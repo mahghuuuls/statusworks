@@ -3,3 +3,31 @@
 
 // If you wish to use the default helper methods, uncomment the line below
 // apply from: 'gradle/scripts/helpers.gradle'
+
+// Development test addon. A separate mod (statusworks_devtest) that registers test definitions
+// through the public API, the way a real addon would. Its classes are on the runClient and
+// runServer classpath only; the jar, sources jar, and reobfuscated jar contain the main source
+// set alone, so the shipped mod never carries test content.
+sourceSets {
+    devtest {
+        // Sources and resources come from the default src/devtest/java and src/devtest/resources.
+        // FML reads a dev mod's mcmod.info and lang files from its class directory, so resources go there too.
+        output.resourcesDir = java.destinationDirectory.get().asFile
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+    }
+}
+
+['runClient', 'runServer'].each { taskName ->
+    tasks.named(taskName, JavaExec).configure { JavaExec task ->
+        task.classpath += sourceSets.devtest.output
+        task.dependsOn tasks.named('devtestClasses')
+    }
+}
+
+// The development dedicated server runs in its own folder (run/server) instead of sharing run/ with the
+// client, so client and server logs, configuration, and worlds never mix.
+tasks.named('runServer', JavaExec).configure { JavaExec task ->
+    task.workingDir = file('run/server')
+    task.doFirst { file('run/server').mkdirs() }
+}

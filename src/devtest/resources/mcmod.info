@@ -1,0 +1,8 @@
+[{
+	"modid": "statusworks_devtest",
+	"name": "Statusworks Dev Test",
+	"version": "dev",
+	"mcversion": "1.12.2",
+	"description": "Development-only test addon for Statusworks. Never shipped.",
+	"authorList": ["mahghuuuls"]
+}]

@@ -26,3 +26,6 @@ run
 
 # development-only runtime jars (agent diagnostics toolkit)
 libs
+
+# log files written by unit tests that load the game logger
+logs
