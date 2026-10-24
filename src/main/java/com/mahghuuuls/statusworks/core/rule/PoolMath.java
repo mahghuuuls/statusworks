@@ -46,12 +46,25 @@ public final class PoolMath {
         return state;
     }
 
-    /** The amount kept between 0 and the capacity; not-a-number becomes 0. */
+    /** How close to 0 or the capacity, as a share of the capacity, an amount must be to snap to it. */
+    static final double SNAP_SHARE = 1e-9;
+
+    /**
+     * The amount kept between 0 and the capacity; not-a-number becomes 0. An amount within a billionth of the
+     * capacity of either end snaps to that end, so floating leftovers of a steady rate do not delay an arrival.
+     */
     public static double clamp(double amount, double capacity) {
         if (Double.isNaN(amount)) {
             return 0;
         }
-        return Math.max(0, Math.min(capacity, amount));
+        double snap = capacity > 0 ? capacity * SNAP_SHARE : 0;
+        if (amount <= snap) {
+            return 0;
+        }
+        if (amount >= capacity - snap) {
+            return capacity;
+        }
+        return amount;
     }
 
     public static void add(PoolState state, double delta) {
@@ -64,9 +77,12 @@ public final class PoolMath {
 
     /** Sets the capacity (above 0); lowering it clamps the amount, raising it keeps the amount. */
     public static void setCapacity(PoolState state, double capacity) {
+        boolean lowered = capacity < state.capacity;
         state.capacity = capacity;
         state.capacitySet = true;
-        state.amount = clamp(state.amount, capacity);
+        if (lowered) {
+            state.amount = clamp(state.amount, capacity);
+        }
     }
 
     public static void setLifetime(PoolState state, int ticks) {

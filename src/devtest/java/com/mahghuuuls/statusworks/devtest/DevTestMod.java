@@ -114,13 +114,18 @@ public class DevTestMod {
         registerPool(loggedPool(PoolDefinition.builder(id("plife"))).capacity(10).lifetime(100).build());
         registerPool(loggedPool(PoolDefinition.builder(id("pkeep"))).capacity(10).startAmount(5)
                 .deathRule(DeathRule.KEEP).build());
-        registerPool(loggedPool(PoolDefinition.builder(id("pplain"))).capacity(10).build());
+        // pplain's capacity can be lowered for a restart card: -Dstatusworks.devtest.pplaincap=<capacity>.
+        registerPool(loggedPool(PoolDefinition.builder(id("pplain")))
+                .capacity(Double.parseDouble(System.getProperty("statusworks.devtest.pplaincap", "10"))).build());
         // Contributions: maximum health per stack, a fixed +10 maximum health, two statuses on armor, movement
         // speed by pool fill, and a players-only contribution type.
         LOGGER.info("[stw-devtest] registered contribution type power: {}",
                 StatusworksApi.registerContributionType(new PowerType()));
         register(logged(StatusDefinition.builder(id("hpstack"))).limit(5).defaultDuration(6000)
                 .contribute(Contribution.attribute("generic.maxHealth", AttributeOperation.ADD, ValueForm.PER_STACK, 4))
+                .build());
+        register(logged(StatusDefinition.builder(id("hpkeep"))).defaultDuration(6000).deathRule(DeathRule.KEEP)
+                .contribute(Contribution.attribute("generic.maxHealth", AttributeOperation.ADD, ValueForm.FIXED, 10))
                 .build());
         register(logged(StatusDefinition.builder(id("hp10"))).defaultDuration(6000)
                 .contribute(Contribution.attribute("generic.maxHealth", AttributeOperation.ADD, ValueForm.FIXED, 10))

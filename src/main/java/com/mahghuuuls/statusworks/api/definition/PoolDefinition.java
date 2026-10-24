@@ -304,7 +304,10 @@ public final class PoolDefinition {
             return this;
         }
 
-        /** The amount below which a {@code percent_of_current} drain snaps to 0. */
+        /**
+         * The amount below which a {@code percent_of_current} drain snaps to 0. Every pool amount within a billionth
+         * of the capacity of 0 already counts as 0, so a smaller cutoff (0 included) acts as that billionth.
+         */
         public Builder cutoff(double amount) {
             this.cutoff = amount;
             return this;

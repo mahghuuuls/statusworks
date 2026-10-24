@@ -29,6 +29,7 @@ import net.minecraftforge.common.util.FakePlayerFactory;
  *   <li>{@code spawn <n>}: summons n named zombies without AI around the sender.</li>
  *   <li>{@code bulk <duration>}: applies the shared test status with that duration to every zombie named
  *   {@code stwbulk} within 64 blocks.</li>
+ *   <li>{@code bulkpool}: gives the draining speed pool to every zombie named {@code stwbulk} within 64 blocks.</li>
  * </ul>
  */
 final class DevTestCommand extends CommandBase {
@@ -40,7 +41,7 @@ final class DevTestCommand extends CommandBase {
 
     @Override
     public String getUsage(ICommandSender sender) {
-        return "/stwdev <dead|nonliving|fakeplayer|unknown|spawn <n>|bulk <duration>>";
+        return "/stwdev <dead|nonliving|fakeplayer|unknown|spawn <n>|bulk <duration>|bulkpool>";
     }
 
     @Override
@@ -114,6 +115,19 @@ final class DevTestCommand extends CommandBase {
                     }
                 }
                 log(sender, "bulk applied " + shared + " for " + duration + " ticks to " + applied + " zombies");
+                break;
+            }
+            case "bulkpool": {
+                String pool = DevTestMod.id("pspeed");
+                int created = 0;
+                for (EntityZombie z : world.getEntitiesWithinAABB(EntityZombie.class,
+                        new net.minecraft.util.math.AxisAlignedBB(pos).grow(64))) {
+                    if ("stwbulk".equals(z.getCustomNameTag())
+                            && StatusworksApi.pools().add(z, pool, 0).succeeded()) {
+                        created++;
+                    }
+                }
+                log(sender, "bulkpool gave " + pool + " to " + created + " zombies");
                 break;
             }
             default:

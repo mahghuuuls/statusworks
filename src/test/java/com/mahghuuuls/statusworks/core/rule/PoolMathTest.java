@@ -69,6 +69,31 @@ class PoolMathTest {
     }
 
     @Test
+    void aSteadyRateArrivesOnItsExactTickDespiteFloatingLeftovers() {
+        PoolDefinition drain = pool().start(PoolStart.FULL).fixed(Direction.DRAIN, 2).build();
+        PoolState s = PoolMath.create(drain);
+        ticks(drain, s, 99);
+        assertTrue(s.amount() > 0);
+        ticks(drain, s, 1);
+        assertEquals(0.0, s.amount(), "exactly 0 on tick 100, not a leftover such as 1.9E-14");
+
+        PoolDefinition fill = pool().fixed(Direction.FILL, 2).build();
+        PoolState f = PoolMath.create(fill);
+        ticks(fill, f, 99);
+        assertTrue(f.amount() < 10);
+        ticks(fill, f, 1);
+        assertEquals(10.0, f.amount(), "exactly full on tick 100");
+
+        assertEquals(0.0, PoolMath.clamp(1e-12, 10));
+        assertEquals(10.0, PoolMath.clamp(10 - 1e-12, 10));
+        assertEquals(1e-6, PoolMath.clamp(1e-6, 10), 0.0, "a real small amount is kept");
+
+        PoolState full = PoolMath.create(pool().start(PoolStart.FULL).build());
+        PoolMath.setCapacity(full, 10.000000005);
+        assertEquals(10.0, full.amount(), 0.0, "raising the capacity never moves the amount, even by a snap");
+    }
+
+    @Test
     void percentOfCapacityFillsAShareOfTheCapacity() {
         PoolDefinition d = pool().capacity(50).percentOfCapacity(Direction.FILL, 10).build();
         PoolState s = PoolMath.create(d);
