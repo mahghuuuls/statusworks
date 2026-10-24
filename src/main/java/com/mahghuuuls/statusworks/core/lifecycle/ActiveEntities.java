@@ -64,8 +64,10 @@ final class ActiveEntities {
      * Moves an entry filed under {@code from} to the world its entity is in now, keeping its tick baseline. Used
      * for an entry filed under a world the entity has since left.
      */
-    void moveToCurrentWorld(World from, Tracked tracked) {
+    boolean moveToCurrentWorld(World from, Tracked tracked) {
+        boolean moved = false;
         if (remove(from, tracked.entity) && !tracked.entity.isDead) {
+            moved = true;
             LinkedHashMap<Integer, Tracked> world = byWorld.computeIfAbsent(tracked.entity.world,
                     w -> new LinkedHashMap<>());
             Tracked existing = world.get(tracked.entity.getEntityId());
@@ -73,10 +75,19 @@ final class ActiveEntities {
                 world.put(tracked.entity.getEntityId(), tracked);
             }
         }
+        return moved;
     }
 
-    void forgetWorld(World world) {
-        byWorld.remove(world);
+    /** Drops a world's set; returns the entities that were in it. */
+    List<EntityLivingBase> forgetWorld(World world) {
+        LinkedHashMap<Integer, Tracked> entries = byWorld.remove(world);
+        List<EntityLivingBase> dropped = new ArrayList<>();
+        if (entries != null) {
+            for (Tracked t : entries.values()) {
+                dropped.add(t.entity);
+            }
+        }
+        return dropped;
     }
 
     /** A copy of the tracked entities of one world, safe to iterate while the set changes. */

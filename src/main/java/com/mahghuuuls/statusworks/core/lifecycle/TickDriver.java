@@ -33,7 +33,6 @@ public final class TickDriver {
 
     private final ActiveEntities active = new ActiveEntities();
     private final RemovalClassifier classifier = new RemovalClassifier();
-    private final WorldRemovalListener removalListener = new WorldRemovalListener(this::onRemoved);
     /** Server ticks since start, for the one-tick memory of the classifier. */
     private long serverTicks;
     private final StatusOperations statuses;
@@ -68,7 +67,11 @@ public final class TickDriver {
             EntityLivingBase entity = tracked.entity;
             if (entity.world != event.world) {
                 // Filed under a world the entity has left (state applied mid-transfer); follow the entity.
-                active.moveToCurrentWorld(event.world, tracked);
+                boolean moved = active.moveToCurrentWorld(event.world, tracked);
+                if (diagnosticLog.isEnabled()) {
+                    diagnosticLog.note("track-move entity=" + StatusOperations.entityLabel(entity) + " from="
+                            + dim(event.world) + " to=" + dim(entity.world) + " moved=" + moved);
+                }
                 continue;
             }
             if (!entity.isEntityAlive()) {
@@ -119,17 +122,27 @@ public final class TickDriver {
         }
     }
 
-    /** A tracked entity left its world: it is no longer processed, and the decision goes to the diagnostic log. */
-    private void onRemoved(Entity entity) {
-        if (!active.remove(entity)) {
+    /**
+     * A tracked entity left a world: it is no longer processed there, and the decision goes to the diagnostic log.
+     * Only the reporting world's set changes, never the set of the world the entity is in now.
+     */
+    private void onRemoved(net.minecraft.world.World world, Entity entity) {
+        if (!active.remove(world, entity)) {
+            if (diagnosticLog.isEnabled() && entity instanceof EntityLivingBase) {
+                EntityState state = entity.getCapability(EntityState.CAPABILITY, null);
+                if (state != null && !state.isEmpty()) {
+                    diagnosticLog.note("removal-untracked entity=" + StatusOperations.entityLabel(entity) + " dim="
+                            + dim(world) + " entityWorldDim=" + dim(entity.world));
+                }
+            }
             return;
         }
         boolean died = entity instanceof EntityLivingBase && ((EntityLivingBase) entity).getHealth() <= 0;
         RemovalClassifier.Removal removal = classifier.classify(entity.getUniqueID(), died, entity.isDead,
                 serverTicks);
         if (diagnosticLog.isEnabled()) {
-            diagnosticLog.note("removal entity=" + StatusOperations.entityLabel(entity) + " kind=" + removal.text()
-                    + " ends=" + removal.ends());
+            diagnosticLog.note("removal entity=" + StatusOperations.entityLabel(entity) + " dim=" + dim(world)
+                    + " kind=" + removal.text() + " ends=" + removal.ends());
         }
     }
 
@@ -148,20 +161,33 @@ public final class TickDriver {
             // The event's world, not entity.world: a player changing dimension joins the new world before
             // PlayerList.transferEntityToWorld sets its world field.
             active.add(event.getWorld(), entity, entity.ticksExisted);
+            if (diagnosticLog.isEnabled()) {
+                diagnosticLog.note("join entity=" + StatusOperations.entityLabel(entity) + " dim="
+                        + dim(event.getWorld()) + " entityWorldDim=" + dim(entity.world));
+            }
         }
+    }
+
+    private static int dim(net.minecraft.world.World world) {
+        return world == null ? Integer.MIN_VALUE : world.provider.getDimension();
     }
 
     @SubscribeEvent
     public void onWorldLoad(WorldEvent.Load event) {
         if (!event.getWorld().isRemote) {
-            event.getWorld().addEventListener(removalListener);
+            event.getWorld().addEventListener(new WorldRemovalListener(event.getWorld(), this::onRemoved));
         }
     }
 
     @SubscribeEvent
     public void onWorldUnload(WorldEvent.Unload event) {
         if (!event.getWorld().isRemote) {
-            active.forgetWorld(event.getWorld());
+            for (EntityLivingBase dropped : active.forgetWorld(event.getWorld())) {
+                if (diagnosticLog.isEnabled()) {
+                    diagnosticLog.note("world-unload dim=" + dim(event.getWorld()) + " dropped entity="
+                            + StatusOperations.entityLabel(dropped) + " entityWorldDim=" + dim(dropped.world));
+                }
+            }
         }
     }
 }
