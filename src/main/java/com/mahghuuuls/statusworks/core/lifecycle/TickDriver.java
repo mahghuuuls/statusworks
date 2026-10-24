@@ -3,6 +3,7 @@ package com.mahghuuuls.statusworks.core.lifecycle;
 import com.mahghuuuls.statusworks.core.contribution.ContributionManager;
 import com.mahghuuuls.statusworks.core.diagnostic.DiagnosticLog;
 import com.mahghuuuls.statusworks.core.diagnostic.Timings;
+import com.mahghuuuls.statusworks.core.mark.MarkStore;
 import com.mahghuuuls.statusworks.core.state.CooldownOperations;
 import com.mahghuuuls.statusworks.core.state.EntityState;
 import com.mahghuuuls.statusworks.core.state.PoolOperations;
@@ -41,15 +42,18 @@ public final class TickDriver {
     private final StatusOperations statuses;
     private final PoolOperations pools;
     private final CooldownOperations cooldowns;
+    private final MarkStore marks;
     private final ContributionManager contributions;
     private final Timings timings;
     private final DiagnosticLog diagnosticLog;
 
     public TickDriver(StatusOperations statuses, PoolOperations pools, CooldownOperations cooldowns,
-                      ContributionManager contributions, Timings timings, DiagnosticLog diagnosticLog) {
+                      MarkStore marks, ContributionManager contributions, Timings timings,
+                      DiagnosticLog diagnosticLog) {
         this.statuses = statuses;
         this.pools = pools;
         this.cooldowns = cooldowns;
+        this.marks = marks;
         this.contributions = contributions;
         this.timings = timings;
         this.diagnosticLog = diagnosticLog;
@@ -121,6 +125,10 @@ public final class TickDriver {
     @SubscribeEvent
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
+            // Marks span worlds, so they advance once per server tick, after every world ticked.
+            long start = System.nanoTime();
+            marks.tick(serverTicks);
+            timings.add(System.nanoTime() - start);
             timings.endTick();
             diagnosticLog.tick();
             serverTicks++;
@@ -150,6 +158,8 @@ public final class TickDriver {
      * Only the reporting world's set changes, never the set of the world the entity is in now.
      */
     private void onRemoved(net.minecraft.world.World world, Entity entity) {
+        // Mark participants are classified even without any state of their own.
+        boolean participant = entity instanceof EntityLivingBase && marks.participates(entity.getUniqueID());
         if (!active.remove(world, entity)) {
             if (diagnosticLog.isEnabled() && entity instanceof EntityLivingBase) {
                 EntityState state = entity.getCapability(EntityState.CAPABILITY, null);
@@ -158,14 +168,25 @@ public final class TickDriver {
                             + dim(world) + " entityWorldDim=" + dim(entity.world));
                 }
             }
-            return;
+            if (!participant) {
+                return;
+            }
         }
         boolean died = entity instanceof EntityLivingBase && ((EntityLivingBase) entity).getHealth() <= 0;
         RemovalClassifier.Removal removal = classifier.classify(entity.getUniqueID(), died, entity.isDead,
                 serverTicks);
         if (diagnosticLog.isEnabled()) {
             diagnosticLog.note("removal entity=" + StatusOperations.entityLabel(entity) + " dim=" + dim(world)
-                    + " kind=" + removal.text() + " ends=" + removal.ends());
+                    + " kind=" + removal.text() + " ends=" + removal.ends() + (participant ? " marks=yes" : ""));
+        }
+        if (participant) {
+            if (removal == RemovalClassifier.Removal.DEATH) {
+                marks.onDeath((EntityLivingBase) entity);
+            } else if (removal == RemovalClassifier.Removal.GONE) {
+                marks.participantGone(entity.getUniqueID(), serverTicks);
+            } else {
+                marks.participantLeft(entity.getUniqueID());
+            }
         }
     }
 
@@ -180,6 +201,8 @@ public final class TickDriver {
             return;
         }
         statuses.reportLoad(entity, state);
+        // Marks first: until the next tick, the mark store keeps the recorded mark contributions of a joiner.
+        marks.onJoin(entity, state);
         contributions.onJoin(entity, state);
         if (!state.isEmpty()) {
             // The event's world, not entity.world: a player changing dimension joins the new world before
@@ -200,12 +223,20 @@ public final class TickDriver {
     public void onWorldLoad(WorldEvent.Load event) {
         if (!event.getWorld().isRemote) {
             event.getWorld().addEventListener(new WorldRemovalListener(event.getWorld(), this::onRemoved));
+            if (event.getWorld().provider.getDimension() == 0) {
+                marks.load(event.getWorld());
+            }
         }
     }
 
     @SubscribeEvent
     public void onWorldUnload(WorldEvent.Unload event) {
         if (!event.getWorld().isRemote) {
+            if (event.getWorld().provider.getDimension() == 0) {
+                marks.unload();
+            } else {
+                marks.onWorldUnload(event.getWorld());
+            }
             for (EntityLivingBase dropped : active.forgetWorld(event.getWorld())) {
                 if (diagnosticLog.isEnabled()) {
                     diagnosticLog.note("world-unload dim=" + dim(event.getWorld()) + " dropped entity="

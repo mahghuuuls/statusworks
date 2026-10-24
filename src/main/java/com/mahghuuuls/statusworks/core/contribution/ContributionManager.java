@@ -23,7 +23,7 @@ import java.util.UUID;
 
 /**
  * The one owner of managed contributions. It computes the contributions an entity should have from its status
- * and pool instances (cooldowns never contribute), compares them with the entity's {@link ContributionRecord},
+ * and pool instances and its active marks (cooldowns never contribute), compares them with the entity's {@link ContributionRecord},
  * and applies only the difference: attribute modifiers with a UUID derived from the contribution key and never
  * saved by the attribute map, and value and end notices to addon contribution types.
  *
@@ -41,6 +41,7 @@ public final class ContributionManager implements ContributionService {
     private final ContributionTypeRegistry types;
     private final CallbackRunner callbacks;
     private final DiagnosticLog log;
+    private MarkContributions marks = MarkContributions.NONE;
 
     public ContributionManager(DefinitionRegistry registry, ContributionTypeRegistry types, CallbackRunner callbacks,
                                DiagnosticLog log) {
@@ -48,6 +49,11 @@ public final class ContributionManager implements ContributionService {
         this.types = types;
         this.callbacks = callbacks;
         this.log = log;
+    }
+
+    /** Connects the mark store, which is built after this manager. */
+    public void setMarks(MarkContributions marks) {
+        this.marks = marks;
     }
 
     /** The contributions the entity should have now, by key. */
@@ -77,6 +83,7 @@ public final class ContributionManager implements ContributionService {
                         list.get(i), slot.state.amount(), slot.state.capacity(), def.updateStep()));
             }
         }
+        marks.collect(entity, (key, c) -> want(out, entity, key, c, c.value()));
         return out;
     }
 

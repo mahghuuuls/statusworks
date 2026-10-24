@@ -113,6 +113,46 @@ class DefinitionRegistryTest {
     }
 
     @Test
+    void marksAreValidatedInTheirOwnTable() {
+        DefinitionRegistry r = new DefinitionRegistry();
+        com.mahghuuuls.statusworks.api.definition.Contribution armor = com.mahghuuuls.statusworks.api.definition
+                .Contribution.attribute("generic.armor", "add", "fixed", 2);
+        r.registerMark(com.mahghuuuls.statusworks.api.definition.MarkDefinition.builder("a:hunt").targetLimit(3)
+                .contribute(com.mahghuuuls.statusworks.api.definition.MarkSide.SOURCE, armor).build(), "moda");
+        r.registerMark(com.mahghuuuls.statusworks.api.definition.MarkDefinition.builder("a:free").unlimitedTargets()
+                .noDuration().build(), "moda");
+        r.registerMark(com.mahghuuuls.statusworks.api.definition.MarkDefinition.builder("a:zero").targetLimit(0)
+                .build(), "moda");
+        r.registerMark(com.mahghuuuls.statusworks.api.definition.MarkDefinition.builder("a:odd").overflow("drop")
+                .build(), "moda");
+        r.registerMark(com.mahghuuuls.statusworks.api.definition.MarkDefinition.builder("a:stack")
+                .contribute(com.mahghuuuls.statusworks.api.definition.MarkSide.TARGET,
+                        com.mahghuuuls.statusworks.api.definition.Contribution.attribute("generic.armor", "add",
+                                "per_stack", 1)).build(), "moda");
+        r.registerMark(com.mahghuuuls.statusworks.api.definition.MarkDefinition.builder("a:far").maximumDistance(-1)
+                .maximumInactive(-5).build(), "moda");
+        r.registerMark(com.mahghuuuls.statusworks.api.definition.MarkDefinition.builder("a:modded")
+                .contribute(com.mahghuuuls.statusworks.api.definition.MarkSide.TARGET,
+                        com.mahghuuuls.statusworks.api.definition.Contribution.attribute("othermod.power", "add",
+                                "fixed", 1)).build(), "moda");
+        List<DefinitionRegistry.Error> errors = r.freeze();
+        assertNotNull(r.mark("a:hunt"));
+        assertNotNull(r.mark("a:free"));
+        assertEquals("bad-limit", errors.get(0).reason);
+        assertEquals("unknown-mode", errors.get(1).reason);
+        assertEquals("bad-form", errors.get(2).reason, "a mark contribution is fixed");
+        assertEquals("bad-distance", errors.get(3).reason);
+        assertEquals("bad-inactive", errors.get(4).reason);
+        assertEquals(5, errors.size());
+        assertTrue(r.isInvalidMark("a:zero"));
+        assertNull(r.status("a:hunt"), "marks have their own ids");
+        List<DefinitionRegistry.Error> late = r.checkLateAttributes(id -> false);
+        assertEquals(1, late.size());
+        assertNull(r.mark("a:modded"));
+        assertTrue(r.isInvalidMark("a:modded"));
+    }
+
+    @Test
     void aDuplicatePoolIdKeepsTheFirst() {
         DefinitionRegistry r = new DefinitionRegistry();
         r.registerPool(PoolDefinition.builder("a:p").capacity(3).build(), "moda");

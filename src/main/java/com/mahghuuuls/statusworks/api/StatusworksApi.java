@@ -2,6 +2,7 @@ package com.mahghuuuls.statusworks.api;
 
 import com.mahghuuuls.statusworks.api.contribution.ContributionType;
 import com.mahghuuuls.statusworks.api.definition.CooldownDefinition;
+import com.mahghuuuls.statusworks.api.definition.MarkDefinition;
 import com.mahghuuuls.statusworks.api.definition.PoolDefinition;
 import com.mahghuuuls.statusworks.api.definition.StatusDefinition;
 
@@ -22,6 +23,8 @@ public final class StatusworksApi {
 
         RegistrationResult registerCooldown(CooldownDefinition definition);
 
+        RegistrationResult registerMark(MarkDefinition definition);
+
         RegistrationResult registerContributionType(ContributionType type);
 
         StatusService statuses();
@@ -29,6 +32,8 @@ public final class StatusworksApi {
         PoolService pools();
 
         CooldownService cooldowns();
+
+        MarkService marks();
 
         ContributionService contributions();
 
@@ -67,6 +72,15 @@ public final class StatusworksApi {
         return current.registerCooldown(definition);
     }
 
+    /** Registers a mark definition for validation when definitions freeze. */
+    public static RegistrationResult registerMark(MarkDefinition definition) {
+        Backend current = backend;
+        if (current == null) {
+            return RegistrationResult.refused("Statusworks is not loaded yet");
+        }
+        return current.registerMark(definition);
+    }
+
     /** Registers an addon contribution type; definitions may name it once registered, before the freeze. */
     public static RegistrationResult registerContributionType(ContributionType type) {
         Backend current = backend;
@@ -89,6 +103,11 @@ public final class StatusworksApi {
     public static CooldownService cooldowns() {
         Backend current = requireBackend();
         return current.cooldowns();
+    }
+
+    public static MarkService marks() {
+        Backend current = requireBackend();
+        return current.marks();
     }
 
     public static ContributionService contributions() {

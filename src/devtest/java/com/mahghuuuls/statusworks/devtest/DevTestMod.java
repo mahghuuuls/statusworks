@@ -6,6 +6,9 @@ import com.mahghuuuls.statusworks.api.definition.AttributeOperation;
 import com.mahghuuuls.statusworks.api.definition.Contribution;
 import com.mahghuuuls.statusworks.api.definition.CooldownDefinition;
 import com.mahghuuuls.statusworks.api.definition.DeathRule;
+import com.mahghuuuls.statusworks.api.definition.MarkDefinition;
+import com.mahghuuuls.statusworks.api.definition.MarkSide;
+import com.mahghuuuls.statusworks.api.definition.Overflow;
 import com.mahghuuuls.statusworks.api.definition.Direction;
 import com.mahghuuuls.statusworks.api.definition.PoolDefinition;
 import com.mahghuuuls.statusworks.api.definition.PoolStart;
@@ -172,6 +175,37 @@ public class DevTestMod {
             register(StatusDefinition.builder(id("invalid")).limit(0).build());
             register(StatusDefinition.builder(id("badmode")).expiration("sometimes").build());
         }
+        // Marks: limits and overflow, refresh rules, no duration, distance, inactive timeout, a source-side armor
+        // contribution, and a mark kept through the source player's death. Every point is logged.
+        registerMark(loggedMark(MarkDefinition.builder(id("mone"))).defaultDuration(600)
+                .onInterval(100, c -> LOGGER.info("[stw-devtest] mark_interval {}", c)).build());
+        registerMark(loggedMark(MarkDefinition.builder(id("mthree"))).targetLimit(3)
+                .overflow(Overflow.REPLACE_OLDEST).defaultDuration(1200).build());
+        registerMark(loggedMark(MarkDefinition.builder(id("mtwo"))).targetLimit(2).overflow(Overflow.REJECT)
+                .defaultDuration(1200).build());
+        registerMark(loggedMark(MarkDefinition.builder(id("mextend"))).defaultDuration(100)
+                .refresh(RefreshRule.EXTEND).maximumRemaining(250).build());
+        registerMark(loggedMark(MarkDefinition.builder(id("mpreserve"))).defaultDuration(100)
+                .refresh(RefreshRule.PRESERVE).build());
+        registerMark(loggedMark(MarkDefinition.builder(id("mnone"))).unlimitedTargets().noDuration().build());
+        registerMark(loggedMark(MarkDefinition.builder(id("mdist"))).noDuration().maximumDistance(32).build());
+        registerMark(loggedMark(MarkDefinition.builder(id("mtimeout"))).noDuration().maximumInactive(200).build());
+        registerMark(loggedMark(MarkDefinition.builder(id("marmor"))).unlimitedTargets().noDuration()
+                .contribute(MarkSide.SOURCE, Contribution.attribute("generic.armor", AttributeOperation.ADD,
+                        ValueForm.FIXED, 4)).build());
+        registerMark(loggedMark(MarkDefinition.builder(id("mkeep"))).defaultDuration(6000).keepOnSourceDeath(true)
+                .build());
+        // Maximum health on both sides, so a reload, relog, or restart card can see any dip as a health clamp.
+        registerMark(loggedMark(MarkDefinition.builder(id("mhp"))).unlimitedTargets().noDuration()
+                .contribute(MarkSide.SOURCE, Contribution.attribute("generic.maxHealth", AttributeOperation.ADD,
+                        ValueForm.FIXED, 4))
+                .contribute(MarkSide.TARGET, Contribution.attribute("generic.maxHealth", AttributeOperation.ADD,
+                        ValueForm.FIXED, 10)).build());
+        if (Boolean.getBoolean("statusworks.devtest.invalid")) {
+            registerMark(MarkDefinition.builder(id("badmark")).targetLimit(0).build());
+            registerMark(MarkDefinition.builder(id("badmarkform")).contribute(MarkSide.TARGET,
+                    Contribution.attribute("generic.armor", AttributeOperation.ADD, ValueForm.PER_STACK, 1)).build());
+        }
         if (event.getSide().isClient()) {
             MinecraftForge.EVENT_BUS.register(new DevTestClientCheck());
         }
@@ -201,6 +235,20 @@ public class DevTestMod {
                 .onFull(c -> LOGGER.info("[stw-devtest] pool_full {}", c))
                 .onTargetReached(c -> LOGGER.info("[stw-devtest] pool_target_reached {}", c))
                 .onRemoved(c -> LOGGER.info("[stw-devtest] pool_removed {}", c));
+    }
+
+    /** Adds callbacks that log each mark point as {@code [stw-devtest] mark_<point> <context>}. */
+    private static MarkDefinition.Builder loggedMark(MarkDefinition.Builder builder) {
+        return builder
+                .onApplied(c -> LOGGER.info("[stw-devtest] mark_applied {}", c))
+                .onInactive(c -> LOGGER.info("[stw-devtest] mark_inactive {}", c))
+                .onActive(c -> LOGGER.info("[stw-devtest] mark_active {}", c))
+                .onRemoved(c -> LOGGER.info("[stw-devtest] mark_removed {}", c));
+    }
+
+    private static void registerMark(MarkDefinition definition) {
+        RegistrationResult result = StatusworksApi.registerMark(definition);
+        LOGGER.info("[stw-devtest] registered mark {}: {}", definition.id(), result);
     }
 
     private static void registerCooldown(CooldownDefinition definition) {

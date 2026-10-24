@@ -71,7 +71,8 @@ final class InspectCommand extends CommandBase {
                     : "fitted to its changed definition, " + Numbers.format(note.countBefore) + " -> "
                     + Numbers.format(note.countAfter)));
         }
-        if (state.hasNothingToSave()) {
+        List<String> markLines = context.marks.describe(entity.getUniqueID());
+        if (state.hasNothingToSave() && markLines.isEmpty()) {
             context.reply(sender, "  no tracked state");
             return;
         }
@@ -136,6 +137,9 @@ final class InspectCommand extends CommandBase {
             context.reply(sender, "  cooldown " + slot.id + " running=" + CooldownRules.running(slot.state)
                     + " remaining=" + CooldownRules.remaining(slot.state) + " age=" + slot.state.age()
                     + (context.registry.cooldown(slot.id) == null ? " (definition missing)" : ""));
+        }
+        for (String line : markLines) {
+            context.reply(sender, "  " + line);
         }
     }
 

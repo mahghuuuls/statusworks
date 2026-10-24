@@ -2,6 +2,7 @@ package com.mahghuuuls.statusworks.core.lifecycle;
 
 import com.mahghuuuls.statusworks.core.contribution.ContributionManager;
 import com.mahghuuuls.statusworks.core.definition.DefinitionRegistry;
+import com.mahghuuuls.statusworks.core.mark.MarkStore;
 import com.mahghuuuls.statusworks.core.rule.DeathRules;
 import com.mahghuuuls.statusworks.core.rule.StatusRules;
 import com.mahghuuuls.statusworks.core.state.CooldownOperations;
@@ -21,7 +22,8 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
  *
  * <ul>
  *   <li>Death (lowest priority, never for a canceled death): every instance ends with reason {@code death},
- *   except on a player the instances whose death rule is {@code keep}.</li>
+ *   except on a player the instances whose death rule is {@code keep}; so do the entity's marks, except on a
+ *   player the marks kept on that side's death.</li>
  *   <li>Clone (Minecraft builds a new player object on respawn and on leaving the End): after a death, the
  *   kept instances are copied with their count and time; on leaving the End, everything is copied. Forge does
  *   not copy capabilities itself in 1.12.</li>
@@ -34,15 +36,18 @@ public final class DeathAndClone {
     private final StatusOperations statuses;
     private final PoolOperations pools;
     private final CooldownOperations cooldowns;
+    private final MarkStore marks;
     private final ContributionManager contributions;
     private final EntityStateCodec codec;
     private final DefinitionRegistry registry;
 
     public DeathAndClone(StatusOperations statuses, PoolOperations pools, CooldownOperations cooldowns,
-                         ContributionManager contributions, EntityStateCodec codec, DefinitionRegistry registry) {
+                         MarkStore marks, ContributionManager contributions, EntityStateCodec codec,
+                         DefinitionRegistry registry) {
         this.statuses = statuses;
         this.pools = pools;
         this.cooldowns = cooldowns;
+        this.marks = marks;
         this.contributions = contributions;
         this.codec = codec;
         this.registry = registry;
@@ -60,6 +65,7 @@ public final class DeathAndClone {
             pools.endOnDeath(entity, state, entity instanceof EntityPlayer);
             cooldowns.endOnDeath(entity, state, entity instanceof EntityPlayer);
         }
+        marks.onDeath(entity);
     }
 
     @SubscribeEvent

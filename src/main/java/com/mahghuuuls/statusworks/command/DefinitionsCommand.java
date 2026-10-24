@@ -1,5 +1,6 @@
 package com.mahghuuuls.statusworks.command;
 
+import com.mahghuuuls.statusworks.api.definition.MarkDefinition;
 import com.mahghuuuls.statusworks.api.definition.PoolDefinition;
 import com.mahghuuuls.statusworks.api.definition.PoolStart;
 import com.mahghuuuls.statusworks.api.definition.Progression;
@@ -39,7 +40,8 @@ final class DefinitionsCommand extends CommandBase {
         DefinitionRegistry registry = context.registry;
         context.reply(sender, "definitions: " + registry.statuses().size() + " statuses valid, "
                 + registry.invalid().size() + " invalid; " + registry.pools().size() + " pools valid, "
-                + registry.invalidPools().size() + " invalid; " + registry.cooldowns().size() + " cooldowns valid, "
+                + registry.invalidPools().size() + " invalid; " + registry.marks().size() + " marks valid, "
+                + registry.invalidMarks().size() + " invalid; " + registry.cooldowns().size() + " cooldowns valid, "
                 + registry.invalidCooldowns().size() + " invalid");
         for (DefinitionRegistry.Entry e : registry.statuses()) {
             StatusDefinition d = e.definition();
@@ -63,6 +65,20 @@ final class DefinitionsCommand extends CommandBase {
                     + (d.lifetime() >= 1 ? " lifetime=" + d.lifetime() : "")
                     + (d.cutoff() >= 0 ? " cutoff=" + Numbers.format(d.cutoff()) : "")
                     + " death=" + d.deathRule().text());
+        }
+        for (DefinitionRegistry.MarkEntry e : registry.marks()) {
+            MarkDefinition d = e.definition();
+            context.reply(sender, "  mark " + d.id() + " origin=" + e.origin() + " limit="
+                    + (d.targetLimit() == MarkDefinition.UNLIMITED ? "unlimited" : Integer.toString(d.targetLimit()))
+                    + " overflow=" + d.overflow().text() + " refresh=" + d.refresh().text()
+                    + " duration=" + (d.defaultDuration() == MarkDefinition.NO_DURATION ? "none"
+                    : Integer.toString(d.defaultDuration()))
+                    + (d.maximumRemaining() >= 1 ? " max=" + d.maximumRemaining() : "")
+                    + (d.maximumDistance() > 0 ? " distance=" + Numbers.format(d.maximumDistance()) : "")
+                    + (d.maximumInactive() >= 1 ? " inactiveMax=" + d.maximumInactive() : "")
+                    + (d.keepOnSourceDeath() ? " keepOnSourceDeath" : "")
+                    + (d.keepOnTargetDeath() ? " keepOnTargetDeath" : "")
+                    + " contributions=" + d.sourceContributions().size() + "/" + d.targetContributions().size());
         }
         for (DefinitionRegistry.CooldownEntry e : registry.cooldowns()) {
             context.reply(sender, "  cooldown " + e.definition().id() + " origin=" + e.origin() + " duration="

@@ -10,13 +10,13 @@ import javax.annotation.Nullable;
  * The entity part of checking an operation or query, shared by every kind: logical server, living entity, not a
  * fake player, has tracked state, and alive when the call changes state.
  */
-final class EntityTargets {
+public final class EntityTargets {
 
     /** Either the living entity with its state, or why there is none. */
-    static final class Checked {
-        @Nullable final EntityLivingBase entity;
-        @Nullable final EntityState state;
-        @Nullable final String failure;
+    public static final class Checked {
+        @Nullable public final EntityLivingBase entity;
+        @Nullable public final EntityState state;
+        @Nullable public final String failure;
 
         private Checked(@Nullable EntityLivingBase entity, @Nullable EntityState state, @Nullable String failure) {
             this.entity = entity;
@@ -36,7 +36,7 @@ final class EntityTargets {
     private EntityTargets() {
     }
 
-    static Checked check(@Nullable Entity entity, boolean forChange) {
+    public static Checked check(@Nullable Entity entity, boolean forChange) {
         if (entity == null) {
             return Checked.failed("entity is null");
         }

@@ -5,6 +5,8 @@ import com.mahghuuuls.statusworks.api.definition.Contribution;
 import com.mahghuuuls.statusworks.api.definition.CooldownDefinition;
 import com.mahghuuuls.statusworks.api.definition.Direction;
 import com.mahghuuuls.statusworks.api.definition.ExpirationMode;
+import com.mahghuuuls.statusworks.api.definition.MarkDefinition;
+import com.mahghuuuls.statusworks.api.definition.MarkSide;
 import com.mahghuuuls.statusworks.api.definition.PoolDefinition;
 import com.mahghuuuls.statusworks.api.definition.Progression;
 import com.mahghuuuls.statusworks.api.definition.StatusDefinition;
@@ -33,7 +35,7 @@ import java.util.regex.Pattern;
  * check of other mods' attribute ids when the server starts ({@link #checkLateAttributes}) can disable
  * definitions.</p>
  *
- * <p>Each kind (status, pool, cooldown) has its own ids and its own registration order.</p>
+ * <p>Each kind (status, pool, mark, cooldown) has its own ids and its own registration order.</p>
  */
 public final class DefinitionRegistry {
 
@@ -154,6 +156,41 @@ public final class DefinitionRegistry {
         }
     }
 
+    /** A valid, registered mark definition with its origin and its position in mark registration order. */
+    public static final class MarkEntry {
+        private final MarkDefinition definition;
+        private final String origin;
+        private final int order;
+
+        MarkEntry(MarkDefinition definition, String origin, int order) {
+            this.definition = definition;
+            this.origin = origin;
+            this.order = order;
+        }
+
+        public MarkDefinition definition() {
+            return definition;
+        }
+
+        public String origin() {
+            return origin;
+        }
+
+        public int order() {
+            return order;
+        }
+    }
+
+    private static final class PendingMark {
+        final MarkDefinition definition;
+        final String origin;
+
+        PendingMark(MarkDefinition definition, String origin) {
+            this.definition = definition;
+            this.origin = origin;
+        }
+    }
+
     private static final class PendingCooldown {
         final CooldownDefinition definition;
         final String origin;
@@ -187,6 +224,9 @@ public final class DefinitionRegistry {
     private final List<Pending> pending = new ArrayList<>();
     private final List<PendingPool> pendingPools = new ArrayList<>();
     private final List<PendingCooldown> pendingCooldowns = new ArrayList<>();
+    private final List<PendingMark> pendingMarks = new ArrayList<>();
+    private final Map<String, MarkEntry> marks = new LinkedHashMap<>();
+    private final Map<String, String> invalidMarkOrigins = new LinkedHashMap<>();
     private final Map<String, Entry> statuses = new LinkedHashMap<>();
     private final Map<String, PoolEntry> pools = new LinkedHashMap<>();
     private final Map<String, CooldownEntry> cooldowns = new LinkedHashMap<>();
@@ -235,6 +275,20 @@ public final class DefinitionRegistry {
             return RegistrationResult.refused("definition is null");
         }
         pendingCooldowns.add(new PendingCooldown(definition, origin));
+        return RegistrationResult.accepted();
+    }
+
+    /** Queues a mark definition for validation at the freeze; refuses it once frozen. */
+    public synchronized RegistrationResult registerMark(@Nullable MarkDefinition definition, String origin) {
+        if (frozen) {
+            String id = definition == null ? "<null>" : definition.id();
+            return RegistrationResult.refused("definitions are frozen; mark " + id + " from " + origin
+                    + " was registered after game startup");
+        }
+        if (definition == null) {
+            return RegistrationResult.refused("definition is null");
+        }
+        pendingMarks.add(new PendingMark(definition, origin));
         return RegistrationResult.accepted();
     }
 
@@ -302,6 +356,26 @@ public final class DefinitionRegistry {
             }
         }
         pendingCooldowns.clear();
+        Map<String, String> claimedMarks = new LinkedHashMap<>();
+        for (PendingMark p : pendingMarks) {
+            String id = p.definition.id();
+            if (id != null && claimedMarks.containsKey(id)) {
+                errors.add(new Error(id, "duplicate-id", "mark already registered by " + claimedMarks.get(id),
+                        p.origin));
+                continue;
+            }
+            if (id != null) {
+                claimedMarks.put(id, p.origin);
+            }
+            List<Error> found = validateMark(p.definition, p.origin);
+            if (found.isEmpty()) {
+                marks.put(id, new MarkEntry(p.definition, p.origin, marks.size()));
+            } else {
+                errors.addAll(found);
+                invalidMarkOrigins.put(found.get(0).id, p.origin);
+            }
+        }
+        pendingMarks.clear();
         frozen = true;
         return Collections.unmodifiableList(errors);
     }
@@ -342,8 +416,23 @@ public final class DefinitionRegistry {
         if (d.onInterval() != null && d.interval() < 1) {
             found.add(new Error(id, "bad-interval", "interval " + d.interval() + " is below 1 tick", origin));
         }
-        validateContributions(d.contributions(), false, id, origin, found);
+        validateContributions(d.contributions(), Kind.STATUS, id, origin, found);
         return found;
+    }
+
+    /** The kinds that declare contributions, each with the value forms it allows. */
+    private enum Kind {
+        STATUS("status", ValueForm.FIXED, ValueForm.PER_STACK),
+        POOL("pool", ValueForm.FIXED, ValueForm.PER_AMOUNT, ValueForm.PER_FILL),
+        MARK("mark", ValueForm.FIXED);
+
+        final String text;
+        final Set<ValueForm> forms;
+
+        Kind(String text, ValueForm... forms) {
+            this.text = text;
+            this.forms = new HashSet<>(Arrays.asList(forms));
+        }
     }
 
     /**
@@ -351,7 +440,7 @@ public final class DefinitionRegistry {
      * must be registered; a vanilla-namespace attribute id ({@code generic.}) must be a real vanilla attribute.
      * Other attribute ids are checked when the server starts ({@link #checkLateAttributes}).
      */
-    private void validateContributions(List<Contribution> contributions, boolean pool, String id, String origin,
+    private void validateContributions(List<Contribution> contributions, Kind kind, String id, String origin,
                                        List<Error> found) {
         for (Contribution c : contributions) {
             if (c == null || c.target() == null || !ID.matcher(c.target()).matches()) {
@@ -375,9 +464,9 @@ public final class DefinitionRegistry {
             if (form == null) {
                 found.add(new Error(id, "unknown-mode", "value form \"" + c.formText()
                         + "\" is not fixed, per_stack, per_amount, or per_fill", origin));
-            } else if (pool ? form == ValueForm.PER_STACK : form == ValueForm.PER_AMOUNT || form == ValueForm.PER_FILL) {
+            } else if (!kind.forms.contains(form)) {
                 found.add(new Error(id, "bad-form", "value form " + form.text() + " does not apply to a "
-                        + (pool ? "pool" : "status"), origin));
+                        + kind.text, origin));
             }
             if (Double.isNaN(c.value()) || Double.isInfinite(c.value())) {
                 found.add(new Error(id, "bad-value", "contribution value " + c.value() + " is not a number", origin));
@@ -386,7 +475,7 @@ public final class DefinitionRegistry {
     }
 
     /**
-     * After the server starts: disables every valid status and pool definition with an attribute contribution
+     * After the server starts: disables every valid status, pool, and mark definition with an attribute contribution
      * whose id is neither a vanilla attribute nor known to the server (by {@code known}), and reports them.
      */
     public synchronized List<Error> checkLateAttributes(Predicate<String> known) {
@@ -406,6 +495,17 @@ public final class DefinitionRegistry {
             if (error != null) {
                 it.remove();
                 invalidPoolOrigins.put(error.id, e.origin());
+                found.add(error);
+            }
+        }
+        for (Iterator<MarkEntry> it = marks.values().iterator(); it.hasNext(); ) {
+            MarkEntry e = it.next();
+            List<Contribution> both = new ArrayList<>(e.definition().sourceContributions());
+            both.addAll(e.definition().targetContributions());
+            Error error = unknownAttribute(e.definition().id(), both, e.origin(), known);
+            if (error != null) {
+                it.remove();
+                invalidMarkOrigins.put(error.id, e.origin());
                 found.add(error);
             }
         }
@@ -480,7 +580,49 @@ public final class DefinitionRegistry {
             found.add(new Error(id, "bad-step", "update step " + d.updateStep() + " is not above 0 and at most 100",
                     origin));
         }
-        validateContributions(d.contributions(), true, id, origin, found);
+        validateContributions(d.contributions(), Kind.POOL, id, origin, found);
+        return found;
+    }
+
+    List<Error> validateMark(MarkDefinition d, String origin) {
+        List<Error> found = new ArrayList<>();
+        String id = d.id() == null ? "<null>" : d.id();
+        if (d.id() == null || !ID.matcher(d.id()).matches()) {
+            found.add(new Error(id, "bad-id", "id must be non-empty and contain no whitespace", origin));
+        }
+        if (d.targetLimit() != MarkDefinition.UNLIMITED && d.targetLimit() < 1) {
+            found.add(new Error(id, "bad-limit", "target limit " + d.targetLimit() + " is below 1", origin));
+        }
+        if (d.overflow() == null) {
+            found.add(new Error(id, "unknown-mode", "overflow \"" + d.overflowText()
+                    + "\" is not replace_oldest or reject", origin));
+        }
+        if (d.refresh() == null) {
+            found.add(new Error(id, "unknown-mode", "refresh \"" + d.refreshText()
+                    + "\" is not reset, extend, or preserve", origin));
+        }
+        if (d.defaultDuration() != MarkDefinition.NO_DURATION && d.defaultDuration() < 1) {
+            found.add(new Error(id, "bad-duration", "default duration " + d.defaultDuration()
+                    + " is below 1 tick", origin));
+        }
+        if (d.maximumRemaining() != MarkDefinition.NO_MAXIMUM && d.maximumRemaining() < 1) {
+            found.add(new Error(id, "bad-maximum", "maximum remaining time " + d.maximumRemaining()
+                    + " is below 1 tick", origin));
+        }
+        if (!(d.maximumDistance() >= 0) || Double.isInfinite(d.maximumDistance())) {
+            found.add(new Error(id, "bad-distance", "maximum distance " + d.maximumDistance()
+                    + " is not 0 or more", origin));
+        }
+        if (d.maximumInactive() < 0) {
+            found.add(new Error(id, "bad-inactive", "maximum inactive time " + d.maximumInactive()
+                    + " is below 0", origin));
+        }
+        if (d.onInterval() != null && d.interval() < 1) {
+            found.add(new Error(id, "bad-interval", "interval " + d.interval() + " is below 1 tick", origin));
+        }
+        for (MarkSide side : MarkSide.values()) {
+            validateContributions(d.contributions(side), Kind.MARK, id, origin, found);
+        }
         return found;
     }
 
@@ -561,6 +703,27 @@ public final class DefinitionRegistry {
     /** Ids of disabled cooldown definitions with their origins. */
     public synchronized Map<String, String> invalidCooldowns() {
         return Collections.unmodifiableMap(new LinkedHashMap<>(invalidCooldownOrigins));
+    }
+
+    /** The valid mark definition with this id, or null. */
+    @Nullable
+    public synchronized MarkEntry mark(String id) {
+        return marks.get(id);
+    }
+
+    /** Whether the mark id was registered but disabled as invalid. */
+    public synchronized boolean isInvalidMark(String id) {
+        return invalidMarkOrigins.containsKey(id);
+    }
+
+    /** Valid mark definitions in registration order. */
+    public synchronized Collection<MarkEntry> marks() {
+        return Collections.unmodifiableCollection(new ArrayList<>(marks.values()));
+    }
+
+    /** Ids of disabled mark definitions with their origins. */
+    public synchronized Map<String, String> invalidMarks() {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(invalidMarkOrigins));
     }
 
     /** Ids of disabled definitions with their origins. */

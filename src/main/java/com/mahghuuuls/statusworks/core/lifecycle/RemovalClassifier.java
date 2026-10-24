@@ -11,8 +11,8 @@ import java.util.UUID;
  *
  * <p>Only {@link Removal#DEATH} and {@link Removal#GONE} are ends; an unload, a logout, or a travel never ends
  * state, because the state is saved with the entity and comes back with it. Statuses end on death through the
- * death event itself; the classification here keeps the processed set right and is what marks will use
- * (IMP-007).</p>
+ * death event itself; the classification here keeps the processed set right and tells the mark store what
+ * happened to a mark participant.</p>
  */
 public final class RemovalClassifier {
 

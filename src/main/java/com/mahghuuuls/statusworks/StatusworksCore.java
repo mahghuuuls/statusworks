@@ -2,12 +2,14 @@ package com.mahghuuuls.statusworks;
 
 import com.mahghuuuls.statusworks.api.ContributionService;
 import com.mahghuuuls.statusworks.api.CooldownService;
+import com.mahghuuuls.statusworks.api.MarkService;
 import com.mahghuuuls.statusworks.api.PoolService;
 import com.mahghuuuls.statusworks.api.RegistrationResult;
 import com.mahghuuuls.statusworks.api.StatusService;
 import com.mahghuuuls.statusworks.api.StatusworksApi;
 import com.mahghuuuls.statusworks.api.contribution.ContributionType;
 import com.mahghuuuls.statusworks.api.definition.CooldownDefinition;
+import com.mahghuuuls.statusworks.api.definition.MarkDefinition;
 import com.mahghuuuls.statusworks.api.definition.PoolDefinition;
 import com.mahghuuuls.statusworks.api.definition.StatusDefinition;
 import com.mahghuuuls.statusworks.core.callback.CallbackRunner;
@@ -20,6 +22,7 @@ import com.mahghuuuls.statusworks.core.diagnostic.Timings;
 import com.mahghuuuls.statusworks.core.diagnostic.Warnings;
 import com.mahghuuuls.statusworks.core.lifecycle.DeathAndClone;
 import com.mahghuuuls.statusworks.core.lifecycle.TickDriver;
+import com.mahghuuuls.statusworks.core.mark.MarkStore;
 import com.mahghuuuls.statusworks.core.state.CooldownOperations;
 import com.mahghuuuls.statusworks.core.state.EntityStateCodec;
 import com.mahghuuuls.statusworks.core.state.PoolOperations;
@@ -45,6 +48,7 @@ public final class StatusworksCore implements StatusworksApi.Backend {
     final PoolOperations pools;
     final CooldownOperations cooldowns;
     final ContributionManager contributions;
+    final MarkStore marks;
     final EntityStateCodec codec;
     final DeathAndClone deathAndClone;
     // Not final: StatusOperations reaches it through a lambda that only runs after construction.
@@ -63,10 +67,12 @@ public final class StatusworksCore implements StatusworksApi.Backend {
                 entity -> this.tickDriver.track(entity), contributions::reconcile);
         this.cooldowns = new CooldownOperations(registry, diagnosticLog, warnings, callbacks,
                 entity -> this.tickDriver.track(entity));
+        this.marks = new MarkStore(registry, callbacks, contributions, diagnosticLog, warnings, logger::warn);
+        contributions.setMarks(marks);
         this.codec = new EntityStateCodec(registry, (key, message) ->
                 warnings.once("load:" + key, "Statusworks: " + message));
-        this.tickDriver = new TickDriver(statuses, pools, cooldowns, contributions, timings, diagnosticLog);
-        this.deathAndClone = new DeathAndClone(statuses, pools, cooldowns, contributions, codec, registry);
+        this.tickDriver = new TickDriver(statuses, pools, cooldowns, marks, contributions, timings, diagnosticLog);
+        this.deathAndClone = new DeathAndClone(statuses, pools, cooldowns, marks, contributions, codec, registry);
     }
 
     @Override
@@ -94,6 +100,20 @@ public final class StatusworksCore implements StatusworksApi.Backend {
             logger.warn("Statusworks: registration refused: {}", result.error());
         }
         return result;
+    }
+
+    @Override
+    public RegistrationResult registerMark(MarkDefinition definition) {
+        RegistrationResult result = registry.registerMark(definition, currentOrigin());
+        if (!result.isAccepted()) {
+            logger.warn("Statusworks: registration refused: {}", result.error());
+        }
+        return result;
+    }
+
+    @Override
+    public MarkService marks() {
+        return marks;
     }
 
     @Override

@@ -4,6 +4,7 @@ import com.mahghuuuls.statusworks.core.definition.DefinitionRegistry;
 import com.mahghuuuls.statusworks.core.diagnostic.DiagnosticLog;
 import com.mahghuuuls.statusworks.core.diagnostic.ErrorCounts;
 import com.mahghuuuls.statusworks.core.diagnostic.Timings;
+import com.mahghuuuls.statusworks.core.mark.MarkStore;
 import com.mahghuuuls.statusworks.core.state.CooldownOperations;
 import com.mahghuuuls.statusworks.core.state.PoolOperations;
 import com.mahghuuuls.statusworks.core.state.StatusOperations;
@@ -23,6 +24,7 @@ public final class StatusworksCommand extends CommandTreeBase {
         final StatusOperations statuses;
         final PoolOperations pools;
         final CooldownOperations cooldowns;
+        final MarkStore marks;
         final DefinitionRegistry registry;
         final DiagnosticLog diagnosticLog;
         final Timings timings;
@@ -30,11 +32,12 @@ public final class StatusworksCommand extends CommandTreeBase {
         final Logger logger;
 
         public Context(StatusOperations statuses, PoolOperations pools, CooldownOperations cooldowns,
-                       DefinitionRegistry registry, DiagnosticLog diagnosticLog,
+                       MarkStore marks, DefinitionRegistry registry, DiagnosticLog diagnosticLog,
                        Timings timings, ErrorCounts errorCounts, Logger logger) {
             this.statuses = statuses;
             this.pools = pools;
             this.cooldowns = cooldowns;
+            this.marks = marks;
             this.registry = registry;
             this.diagnosticLog = diagnosticLog;
             this.timings = timings;
@@ -53,6 +56,7 @@ public final class StatusworksCommand extends CommandTreeBase {
         addSubcommand(new InspectCommand(context));
         addSubcommand(new StatusCommand(context));
         addSubcommand(new PoolCommand(context));
+        addSubcommand(new MarkCommand(context));
         addSubcommand(new CooldownCommand(context));
         addSubcommand(new DefinitionsCommand(context));
         addSubcommand(new DebugCommand(context));

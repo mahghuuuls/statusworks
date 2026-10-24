@@ -26,6 +26,19 @@ public final class ContributionValues {
         return kind + ":" + definitionId + "#" + index;
     }
 
+    /**
+     * The key of contribution {@code index} of a mark definition on one participant: one mark per pair, so the key
+     * names the entity's side and the other participant ({@code mark:<id>#<index>@<side>:<other UUID>}); two
+     * entities that mark each other get different keys.
+     */
+    public static String markKey(String definitionId, int index, String side, UUID other) {
+        return key("mark", definitionId, index) + "@" + side + ":" + other;
+    }
+
+    public static boolean isMarkKey(String key) {
+        return key.startsWith("mark:");
+    }
+
     /** The attribute modifier UUID for a key; the same key always gives the same UUID. */
     public static UUID modifierId(String key) {
         return MODIFIER_IDS.computeIfAbsent(key,

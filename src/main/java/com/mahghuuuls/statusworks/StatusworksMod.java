@@ -91,8 +91,9 @@ public class StatusworksMod {
             LOGGER.error("Statusworks: invalid definition {}", error);
         }
         LOGGER.info("Statusworks definitions frozen: {} statuses valid, {} invalid; {} pools valid, {} invalid; "
-                        + "{} cooldowns valid, {} invalid; {} errors", core.registry.statuses().size(),
-                core.registry.invalid().size(), core.registry.pools().size(), core.registry.invalidPools().size(),
+                        + "{} marks valid, {} invalid; {} cooldowns valid, {} invalid; {} errors",
+                core.registry.statuses().size(), core.registry.invalid().size(), core.registry.pools().size(),
+                core.registry.invalidPools().size(), core.registry.marks().size(), core.registry.invalidMarks().size(),
                 core.registry.cooldowns().size(), core.registry.invalidCooldowns().size(), errors.size());
         if (ServerConfig.strictMode && !errors.isEmpty()) {
             StringBuilder message = new StringBuilder("Statusworks strict mode: ").append(errors.size())
@@ -108,8 +109,8 @@ public class StatusworksMod {
     public void serverStarting(FMLServerStartingEvent event) {
         checkModdedAttributes(event);
         event.registerServerCommand(new StatusworksCommand(new StatusworksCommand.Context(core.statuses,
-                core.pools, core.cooldowns, core.registry, core.diagnosticLog, core.timings, core.errorCounts,
-                LOGGER)));
+                core.pools, core.cooldowns, core.marks, core.registry, core.diagnosticLog, core.timings,
+                core.errorCounts, LOGGER)));
     }
 
     /**
