@@ -1,6 +1,5 @@
 package com.mahghuuuls.statusworks.core.rule;
 
-import com.mahghuuuls.statusworks.api.definition.DeathRule;
 import com.mahghuuuls.statusworks.api.definition.ExpirationMode;
 import com.mahghuuuls.statusworks.api.definition.Ownership;
 import com.mahghuuuls.statusworks.api.definition.RefreshRule;
@@ -293,7 +292,7 @@ public final class StatusRules {
 
     /** Whether an instance outlives its entity's death: only on a player, and only with the {@code keep} rule. */
     public static boolean survivesDeath(StatusDefinition definition, boolean player) {
-        return player && definition.deathRule() == DeathRule.KEEP;
+        return DeathRules.survivesDeath(definition.deathRule(), player);
     }
 
     /**
@@ -301,7 +300,7 @@ public final class StatusRules {
      * a death only when it survives death.
      */
     public static boolean copiedOnClone(StatusDefinition definition, boolean wasDeath) {
-        return !wasDeath || survivesDeath(definition, true);
+        return DeathRules.copiedOnClone(definition.deathRule(), wasDeath);
     }
 
     /**

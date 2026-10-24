@@ -1,8 +1,14 @@
 package com.mahghuuuls.statusworks.core.definition;
 
 import com.mahghuuuls.statusworks.api.RegistrationResult;
+import com.mahghuuuls.statusworks.api.definition.Contribution;
+import com.mahghuuuls.statusworks.api.definition.CooldownDefinition;
+import com.mahghuuuls.statusworks.api.definition.Direction;
 import com.mahghuuuls.statusworks.api.definition.ExpirationMode;
+import com.mahghuuuls.statusworks.api.definition.PoolDefinition;
+import com.mahghuuuls.statusworks.api.definition.Progression;
 import com.mahghuuuls.statusworks.api.definition.StatusDefinition;
+import com.mahghuuuls.statusworks.api.definition.ValueForm;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -10,7 +16,12 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 /**
@@ -18,12 +29,35 @@ import java.util.regex.Pattern;
  *
  * <p>This class owns what makes a definition valid, which registration wins for a duplicate id (the first, even
  * when it is invalid, so a broken definition is reported rather than silently replaced),
- * the registration order every tick follows, and the freeze. After the freeze it never changes.</p>
+ * the registration order every tick follows, and the freeze. After the freeze only one change happens: the
+ * check of other mods' attribute ids when the server starts ({@link #checkLateAttributes}) can disable
+ * definitions.</p>
+ *
+ * <p>Each kind (status, pool, cooldown) has its own ids and its own registration order.</p>
  */
 public final class DefinitionRegistry {
 
     /** An id is any non-empty text without whitespace, so it can be typed as one command argument. */
     private static final Pattern ID = Pattern.compile("\\S+");
+
+    /** Attribute ids of vanilla Minecraft and Forge, known when definitions freeze. */
+    public static final Set<String> VANILLA_ATTRIBUTES = java.util.Collections.unmodifiableSet(new HashSet<>(
+            Arrays.asList("generic.maxHealth", "generic.followRange", "generic.knockbackResistance",
+                    "generic.movementSpeed", "generic.flyingSpeed", "generic.attackDamage", "generic.attackSpeed",
+                    "generic.armor", "generic.armorToughness", "generic.luck", "generic.reachDistance",
+                    "forge.swimSpeed", "horse.jumpStrength", "zombie.spawnReinforcements")));
+
+    /** Whether a contribution type id is registered; checked when definitions freeze. */
+    private final Predicate<String> knownType;
+
+    /** A registry that knows no contribution type (tests and the default). */
+    public DefinitionRegistry() {
+        this(id -> false);
+    }
+
+    public DefinitionRegistry(Predicate<String> knownType) {
+        this.knownType = knownType;
+    }
 
     /** A valid, registered definition with where it came from and its position in registration order. */
     public static final class Entry {
@@ -70,6 +104,66 @@ public final class DefinitionRegistry {
         }
     }
 
+    /** A valid, registered pool definition with its origin and its position in pool registration order. */
+    public static final class PoolEntry {
+        private final PoolDefinition definition;
+        private final String origin;
+        private final int order;
+
+        PoolEntry(PoolDefinition definition, String origin, int order) {
+            this.definition = definition;
+            this.origin = origin;
+            this.order = order;
+        }
+
+        public PoolDefinition definition() {
+            return definition;
+        }
+
+        public String origin() {
+            return origin;
+        }
+
+        public int order() {
+            return order;
+        }
+    }
+
+    /** A valid, registered cooldown definition with its origin and its position in cooldown registration order. */
+    public static final class CooldownEntry {
+        private final CooldownDefinition definition;
+        private final String origin;
+        private final int order;
+
+        CooldownEntry(CooldownDefinition definition, String origin, int order) {
+            this.definition = definition;
+            this.origin = origin;
+            this.order = order;
+        }
+
+        public CooldownDefinition definition() {
+            return definition;
+        }
+
+        public String origin() {
+            return origin;
+        }
+
+        public int order() {
+            return order;
+        }
+    }
+
+    private static final class PendingCooldown {
+        final CooldownDefinition definition;
+        final String origin;
+
+        PendingCooldown(CooldownDefinition definition, String origin) {
+            this.definition = definition;
+            this.origin = origin;
+        }
+    }
+
     private static final class Pending {
         final StatusDefinition definition;
         final String origin;
@@ -80,9 +174,25 @@ public final class DefinitionRegistry {
         }
     }
 
+    private static final class PendingPool {
+        final PoolDefinition definition;
+        final String origin;
+
+        PendingPool(PoolDefinition definition, String origin) {
+            this.definition = definition;
+            this.origin = origin;
+        }
+    }
+
     private final List<Pending> pending = new ArrayList<>();
+    private final List<PendingPool> pendingPools = new ArrayList<>();
+    private final List<PendingCooldown> pendingCooldowns = new ArrayList<>();
     private final Map<String, Entry> statuses = new LinkedHashMap<>();
+    private final Map<String, PoolEntry> pools = new LinkedHashMap<>();
+    private final Map<String, CooldownEntry> cooldowns = new LinkedHashMap<>();
     private final Map<String, String> invalidOrigins = new LinkedHashMap<>();
+    private final Map<String, String> invalidPoolOrigins = new LinkedHashMap<>();
+    private final Map<String, String> invalidCooldownOrigins = new LinkedHashMap<>();
     private final List<Error> errors = new ArrayList<>();
     private boolean frozen;
 
@@ -97,6 +207,34 @@ public final class DefinitionRegistry {
             return RegistrationResult.refused("definition is null");
         }
         pending.add(new Pending(definition, origin));
+        return RegistrationResult.accepted();
+    }
+
+    /** Queues a pool definition for validation at the freeze; refuses it once frozen. */
+    public synchronized RegistrationResult registerPool(@Nullable PoolDefinition definition, String origin) {
+        if (frozen) {
+            String id = definition == null ? "<null>" : definition.id();
+            return RegistrationResult.refused("definitions are frozen; pool " + id + " from " + origin
+                    + " was registered after game startup");
+        }
+        if (definition == null) {
+            return RegistrationResult.refused("definition is null");
+        }
+        pendingPools.add(new PendingPool(definition, origin));
+        return RegistrationResult.accepted();
+    }
+
+    /** Queues a cooldown definition for validation at the freeze; refuses it once frozen. */
+    public synchronized RegistrationResult registerCooldown(@Nullable CooldownDefinition definition, String origin) {
+        if (frozen) {
+            String id = definition == null ? "<null>" : definition.id();
+            return RegistrationResult.refused("definitions are frozen; cooldown " + id + " from " + origin
+                    + " was registered after game startup");
+        }
+        if (definition == null) {
+            return RegistrationResult.refused("definition is null");
+        }
+        pendingCooldowns.add(new PendingCooldown(definition, origin));
         return RegistrationResult.accepted();
     }
 
@@ -124,11 +262,51 @@ public final class DefinitionRegistry {
             }
         }
         pending.clear();
+        Map<String, String> claimedPools = new LinkedHashMap<>();
+        for (PendingPool p : pendingPools) {
+            String id = p.definition.id();
+            if (id != null && claimedPools.containsKey(id)) {
+                errors.add(new Error(id, "duplicate-id", "pool already registered by " + claimedPools.get(id),
+                        p.origin));
+                continue;
+            }
+            if (id != null) {
+                claimedPools.put(id, p.origin);
+            }
+            List<Error> found = validatePool(p.definition, p.origin);
+            if (found.isEmpty()) {
+                pools.put(id, new PoolEntry(p.definition, p.origin, pools.size()));
+            } else {
+                errors.addAll(found);
+                invalidPoolOrigins.put(found.get(0).id, p.origin);
+            }
+        }
+        pendingPools.clear();
+        Map<String, String> claimedCooldowns = new LinkedHashMap<>();
+        for (PendingCooldown p : pendingCooldowns) {
+            String id = p.definition.id();
+            if (id != null && claimedCooldowns.containsKey(id)) {
+                errors.add(new Error(id, "duplicate-id", "cooldown already registered by "
+                        + claimedCooldowns.get(id), p.origin));
+                continue;
+            }
+            if (id != null) {
+                claimedCooldowns.put(id, p.origin);
+            }
+            List<Error> found = validateCooldown(p.definition, p.origin);
+            if (found.isEmpty()) {
+                cooldowns.put(id, new CooldownEntry(p.definition, p.origin, cooldowns.size()));
+            } else {
+                errors.addAll(found);
+                invalidCooldownOrigins.put(found.get(0).id, p.origin);
+            }
+        }
+        pendingCooldowns.clear();
         frozen = true;
         return Collections.unmodifiableList(errors);
     }
 
-    static List<Error> validate(StatusDefinition d, String origin) {
+    List<Error> validate(StatusDefinition d, String origin) {
         List<Error> found = new ArrayList<>();
         String id = d.id() == null ? "<null>" : d.id();
         if (d.id() == null || !ID.matcher(d.id()).matches()) {
@@ -164,6 +342,162 @@ public final class DefinitionRegistry {
         if (d.onInterval() != null && d.interval() < 1) {
             found.add(new Error(id, "bad-interval", "interval " + d.interval() + " is below 1 tick", origin));
         }
+        validateContributions(d.contributions(), false, id, origin, found);
+        return found;
+    }
+
+    /**
+     * Checks declared contributions: operation, value form for the kind, value, and target. A contribution type
+     * must be registered; a vanilla-namespace attribute id ({@code generic.}) must be a real vanilla attribute.
+     * Other attribute ids are checked when the server starts ({@link #checkLateAttributes}).
+     */
+    private void validateContributions(List<Contribution> contributions, boolean pool, String id, String origin,
+                                       List<Error> found) {
+        for (Contribution c : contributions) {
+            if (c == null || c.target() == null || !ID.matcher(c.target()).matches()) {
+                found.add(new Error(id, "bad-contribution", "a contribution has no valid target id", origin));
+                continue;
+            }
+            if (c.isAttribute()) {
+                if (c.operation() == null) {
+                    found.add(new Error(id, "unknown-mode", "attribute operation \"" + c.operationText()
+                            + "\" is not add, multiply_base, or multiply_total", origin));
+                }
+                if (c.target().startsWith("generic.") && !VANILLA_ATTRIBUTES.contains(c.target())) {
+                    found.add(new Error(id, "unknown-attribute", "attribute \"" + c.target()
+                            + "\" is not a vanilla attribute", origin));
+                }
+            } else if (!knownType.test(c.target())) {
+                found.add(new Error(id, "unknown-type", "contribution type \"" + c.target()
+                        + "\" is not registered", origin));
+            }
+            ValueForm form = c.form();
+            if (form == null) {
+                found.add(new Error(id, "unknown-mode", "value form \"" + c.formText()
+                        + "\" is not fixed, per_stack, per_amount, or per_fill", origin));
+            } else if (pool ? form == ValueForm.PER_STACK : form == ValueForm.PER_AMOUNT || form == ValueForm.PER_FILL) {
+                found.add(new Error(id, "bad-form", "value form " + form.text() + " does not apply to a "
+                        + (pool ? "pool" : "status"), origin));
+            }
+            if (Double.isNaN(c.value()) || Double.isInfinite(c.value())) {
+                found.add(new Error(id, "bad-value", "contribution value " + c.value() + " is not a number", origin));
+            }
+        }
+    }
+
+    /**
+     * After the server starts: disables every valid status and pool definition with an attribute contribution
+     * whose id is neither a vanilla attribute nor known to the server (by {@code known}), and reports them.
+     */
+    public synchronized List<Error> checkLateAttributes(Predicate<String> known) {
+        List<Error> found = new ArrayList<>();
+        for (Iterator<Entry> it = statuses.values().iterator(); it.hasNext(); ) {
+            Entry e = it.next();
+            Error error = unknownAttribute(e.definition().id(), e.definition().contributions(), e.origin(), known);
+            if (error != null) {
+                it.remove();
+                invalidOrigins.put(error.id, e.origin());
+                found.add(error);
+            }
+        }
+        for (Iterator<PoolEntry> it = pools.values().iterator(); it.hasNext(); ) {
+            PoolEntry e = it.next();
+            Error error = unknownAttribute(e.definition().id(), e.definition().contributions(), e.origin(), known);
+            if (error != null) {
+                it.remove();
+                invalidPoolOrigins.put(error.id, e.origin());
+                found.add(error);
+            }
+        }
+        errors.addAll(found);
+        return found;
+    }
+
+    @Nullable
+    private static Error unknownAttribute(String id, List<Contribution> contributions, String origin,
+                                          Predicate<String> known) {
+        for (Contribution c : contributions) {
+            if (c.isAttribute() && !VANILLA_ATTRIBUTES.contains(c.target()) && !known.test(c.target())) {
+                return new Error(id, "unknown-attribute", "attribute \"" + c.target()
+                        + "\" is not known to this server", origin);
+            }
+        }
+        return null;
+    }
+
+    List<Error> validatePool(PoolDefinition d, String origin) {
+        List<Error> found = new ArrayList<>();
+        String id = d.id() == null ? "<null>" : d.id();
+        if (d.id() == null || !ID.matcher(d.id()).matches()) {
+            found.add(new Error(id, "bad-id", "id must be non-empty and contain no whitespace", origin));
+        }
+        if (!(d.capacity() > 0) || Double.isInfinite(d.capacity())) {
+            found.add(new Error(id, "bad-capacity", "capacity " + d.capacity() + " is not above 0", origin));
+        }
+        if (d.start() == null) {
+            found.add(new Error(id, "unknown-mode", "start \"" + d.startText() + "\" is not empty, full, or amount",
+                    origin));
+        }
+        if (Double.isNaN(d.startAmount()) || Double.isInfinite(d.startAmount())) {
+            found.add(new Error(id, "bad-amount", "start amount " + d.startAmount() + " is not a number", origin));
+        }
+        if (d.lifetime() != PoolDefinition.NO_LIFETIME && d.lifetime() < 1) {
+            found.add(new Error(id, "bad-lifetime", "lifetime " + d.lifetime() + " is below 1 tick", origin));
+        }
+        Progression rule = d.progression();
+        if (rule == null) {
+            found.add(new Error(id, "unknown-mode", "progression \"" + d.progressionText()
+                    + "\" is not none, fixed, percent_of_capacity, percent_of_current, or to_target", origin));
+        } else if (rule == Progression.TO_TARGET) {
+            if (d.targetDuration() < 1) {
+                found.add(new Error(id, "bad-duration", "to_target duration " + d.targetDuration()
+                        + " is below 1 tick", origin));
+            }
+            if (Double.isNaN(d.target()) || Double.isInfinite(d.target())) {
+                found.add(new Error(id, "bad-amount", "target " + d.target() + " is not a number", origin));
+            }
+        } else if (rule != Progression.NONE) {
+            if (d.direction() == null) {
+                found.add(new Error(id, "unknown-mode", "direction \"" + d.directionText()
+                        + "\" is not fill or drain", origin));
+            }
+            if (!(d.rate() > 0) || Double.isInfinite(d.rate())) {
+                found.add(new Error(id, "bad-rate", "rate " + d.rate() + " is not above 0", origin));
+            }
+            if (rule == Progression.PERCENT_OF_CURRENT && d.direction() == Direction.DRAIN && d.rate() > 100) {
+                found.add(new Error(id, "bad-rate", "a percent_of_current drain of " + d.rate()
+                        + " percent is above 100", origin));
+            }
+        }
+        if (d.cutoff() != PoolDefinition.DEFAULT_CUTOFF && !(d.cutoff() >= 0)) {
+            found.add(new Error(id, "bad-cutoff", "cutoff " + d.cutoff() + " is below 0", origin));
+        }
+        if (d.deathRule() == null) {
+            found.add(new Error(id, "unknown-mode", "death rule \"" + d.deathRuleText()
+                    + "\" is not clear or keep", origin));
+        }
+        if (!(d.updateStep() > 0) || d.updateStep() > 100) {
+            found.add(new Error(id, "bad-step", "update step " + d.updateStep() + " is not above 0 and at most 100",
+                    origin));
+        }
+        validateContributions(d.contributions(), true, id, origin, found);
+        return found;
+    }
+
+    static List<Error> validateCooldown(CooldownDefinition d, String origin) {
+        List<Error> found = new ArrayList<>();
+        String id = d.id() == null ? "<null>" : d.id();
+        if (d.id() == null || !ID.matcher(d.id()).matches()) {
+            found.add(new Error(id, "bad-id", "id must be non-empty and contain no whitespace", origin));
+        }
+        if (d.defaultDuration() < 1) {
+            found.add(new Error(id, "bad-duration", "default duration " + d.defaultDuration() + " is below 1 tick",
+                    origin));
+        }
+        if (d.deathRule() == null) {
+            found.add(new Error(id, "unknown-mode", "death rule \"" + d.deathRuleText()
+                    + "\" is not clear or keep", origin));
+        }
         return found;
     }
 
@@ -185,6 +519,48 @@ public final class DefinitionRegistry {
     /** Valid status definitions in registration order. */
     public synchronized Collection<Entry> statuses() {
         return Collections.unmodifiableCollection(new ArrayList<>(statuses.values()));
+    }
+
+    /** The valid pool definition with this id, or null. */
+    @Nullable
+    public synchronized PoolEntry pool(String id) {
+        return pools.get(id);
+    }
+
+    /** Whether the pool id was registered but disabled as invalid. */
+    public synchronized boolean isInvalidPool(String id) {
+        return invalidPoolOrigins.containsKey(id);
+    }
+
+    /** Valid pool definitions in registration order. */
+    public synchronized Collection<PoolEntry> pools() {
+        return Collections.unmodifiableCollection(new ArrayList<>(pools.values()));
+    }
+
+    /** Ids of disabled pool definitions with their origins. */
+    public synchronized Map<String, String> invalidPools() {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(invalidPoolOrigins));
+    }
+
+    /** The valid cooldown definition with this id, or null. */
+    @Nullable
+    public synchronized CooldownEntry cooldown(String id) {
+        return cooldowns.get(id);
+    }
+
+    /** Whether the cooldown id was registered but disabled as invalid. */
+    public synchronized boolean isInvalidCooldown(String id) {
+        return invalidCooldownOrigins.containsKey(id);
+    }
+
+    /** Valid cooldown definitions in registration order. */
+    public synchronized Collection<CooldownEntry> cooldowns() {
+        return Collections.unmodifiableCollection(new ArrayList<>(cooldowns.values()));
+    }
+
+    /** Ids of disabled cooldown definitions with their origins. */
+    public synchronized Map<String, String> invalidCooldowns() {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(invalidCooldownOrigins));
     }
 
     /** Ids of disabled definitions with their origins. */

@@ -5,6 +5,7 @@ import com.mahghuuuls.statusworks.core.diagnostic.Warnings;
 
 import java.util.ArrayDeque;
 import java.util.function.BiConsumer;
+import java.util.function.BooleanSupplier;
 
 /**
  * Runs every author callback, and owns what happens when one misbehaves.
@@ -107,6 +108,26 @@ public final class CallbackRunner {
         drain();
     }
 
+    /**
+     * Asks an author's yes-or-no question now (a query, never queued) under the same failure policy: an
+     * exception is logged once and counted, and after {@value #DISABLE_AFTER} failures in a row the question is
+     * no longer asked. On failure or when disabled, the answer is {@code onFailure}.
+     */
+    public boolean ask(String definitionId, String point, BooleanSupplier query, boolean onFailure) {
+        String key = definitionId + " " + point;
+        if (counts.isDisabled(key)) {
+            return onFailure;
+        }
+        try {
+            boolean answer = query.getAsBoolean();
+            counts.success(key);
+            return answer;
+        } catch (Throwable t) {
+            fail(key, t);
+            return onFailure;
+        }
+    }
+
     private void drain() {
         while (!queue.isEmpty()) {
             Pending p = queue.poll();
@@ -123,18 +144,22 @@ public final class CallbackRunner {
             call.run();
             counts.success(key);
         } catch (Throwable t) {
-            ErrorCounts.Entry e = counts.failure(key);
-            if (e.total() == 1) {
-                errorLog.accept("Statusworks: callback " + key + " failed; later failures are counted, see"
-                        + " /statusworks errors", t);
-            }
-            if (e.consecutive() >= DISABLE_AFTER && !e.disabled()) {
-                counts.disable(key);
-                warnings.once("disabled:" + key, "Statusworks: callback " + key + " failed " + DISABLE_AFTER
-                        + " times in a row and is disabled until restart");
-            }
+            fail(key, t);
         } finally {
             depth = -1;
+        }
+    }
+
+    private void fail(String key, Throwable t) {
+        ErrorCounts.Entry e = counts.failure(key);
+        if (e.total() == 1) {
+            errorLog.accept("Statusworks: callback " + key + " failed; later failures are counted, see"
+                    + " /statusworks errors", t);
+        }
+        if (e.consecutive() >= DISABLE_AFTER && !e.disabled()) {
+            counts.disable(key);
+            warnings.once("disabled:" + key, "Statusworks: callback " + key + " failed " + DISABLE_AFTER
+                    + " times in a row and is disabled until restart");
         }
     }
 }

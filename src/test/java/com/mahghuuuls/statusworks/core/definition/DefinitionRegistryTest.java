@@ -1,7 +1,9 @@
 package com.mahghuuuls.statusworks.core.definition;
 
 import com.mahghuuuls.statusworks.api.RegistrationResult;
+import com.mahghuuuls.statusworks.api.definition.Direction;
 import com.mahghuuuls.statusworks.api.definition.ExpirationMode;
+import com.mahghuuuls.statusworks.api.definition.PoolDefinition;
 import com.mahghuuuls.statusworks.api.definition.StatusDefinition;
 import org.junit.jupiter.api.Test;
 
@@ -14,6 +16,111 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DefinitionRegistryTest {
+
+    private static String poolError(PoolDefinition definition) {
+        DefinitionRegistry r = new DefinitionRegistry();
+        r.registerPool(definition, "moda");
+        List<DefinitionRegistry.Error> errors = r.freeze();
+        assertNull(r.pool(definition.id()));
+        assertTrue(r.isInvalidPool(definition.id()));
+        return errors.get(0).reason;
+    }
+
+    @Test
+    void poolsHaveTheirOwnIdsOrderAndValidation() {
+        DefinitionRegistry r = new DefinitionRegistry();
+        r.registerStatus(StatusDefinition.builder("a:same").build(), "moda");
+        r.registerPool(PoolDefinition.builder("a:same").capacity(5).build(), "moda");
+        r.registerPool(PoolDefinition.builder("a:second").capacity(5).build(), "moda");
+        assertTrue(r.freeze().isEmpty());
+        assertNotNull(r.status("a:same"));
+        assertEquals(0, r.pool("a:same").order());
+        assertEquals(1, r.pool("a:second").order());
+        assertFalse(r.registerPool(PoolDefinition.builder("a:late").build(), "moda").isAccepted());
+    }
+
+    @Test
+    void invalidPoolsAreDisabledWithTheirReason() {
+        assertEquals("bad-capacity", poolError(PoolDefinition.builder("a:p").capacity(0).build()));
+        assertEquals("unknown-mode", poolError(PoolDefinition.builder("a:p").start("half").build()));
+        assertEquals("bad-lifetime", poolError(PoolDefinition.builder("a:p").lifetime(0).build()));
+        assertEquals("unknown-mode", poolError(PoolDefinition.builder("a:p").progression("decay", "fill", 1).build()));
+        assertEquals("unknown-mode", poolError(PoolDefinition.builder("a:p").progression("fixed", "up", 1).build()));
+        assertEquals("bad-rate", poolError(PoolDefinition.builder("a:p").fixed(Direction.FILL, 0).build()));
+        assertEquals("bad-rate", poolError(PoolDefinition.builder("a:p").percentOfCurrent(Direction.DRAIN, 150)
+                .build()));
+        assertEquals("bad-duration", poolError(PoolDefinition.builder("a:p").toTarget(0, 0).build()));
+        assertEquals("bad-cutoff", poolError(PoolDefinition.builder("a:p").cutoff(-3).build()));
+        assertEquals("unknown-mode", poolError(PoolDefinition.builder("a:p").deathRule("maybe").build()));
+    }
+
+    @Test
+    void cooldownsAreValidatedInTheirOwnTable() {
+        DefinitionRegistry r = new DefinitionRegistry();
+        r.registerCooldown(com.mahghuuuls.statusworks.api.definition.CooldownDefinition.builder("a:dash").build(),
+                "moda");
+        r.registerCooldown(com.mahghuuuls.statusworks.api.definition.CooldownDefinition.builder("a:bad")
+                .defaultDuration(0).build(), "moda");
+        r.registerCooldown(com.mahghuuuls.statusworks.api.definition.CooldownDefinition.builder("a:odd")
+                .deathRule("sometimes").build(), "moda");
+        List<DefinitionRegistry.Error> errors = r.freeze();
+        assertNotNull(r.cooldown("a:dash"));
+        assertEquals(2, errors.size());
+        assertEquals("bad-duration", errors.get(0).reason);
+        assertEquals("unknown-mode", errors.get(1).reason);
+        assertTrue(r.isInvalidCooldown("a:bad"));
+    }
+
+    @Test
+    void contributionsAreValidated() {
+        DefinitionRegistry r = new DefinitionRegistry("t:power"::equals);
+        r.registerStatus(StatusDefinition.builder("a:ok").contribute(com.mahghuuuls.statusworks.api.definition
+                .Contribution.attribute("generic.maxHealth", "add", "per_stack", 4)).build(), "moda");
+        r.registerStatus(StatusDefinition.builder("a:typed").contribute(com.mahghuuuls.statusworks.api.definition
+                .Contribution.type("t:power", "per_stack", 1)).build(), "moda");
+        r.registerStatus(StatusDefinition.builder("a:typo").contribute(com.mahghuuuls.statusworks.api.definition
+                .Contribution.attribute("generic.maxHelth", "add", "fixed", 4)).build(), "moda");
+        r.registerStatus(StatusDefinition.builder("a:notype").contribute(com.mahghuuuls.statusworks.api.definition
+                .Contribution.type("t:nope", "fixed", 1)).build(), "moda");
+        r.registerStatus(StatusDefinition.builder("a:op").contribute(com.mahghuuuls.statusworks.api.definition
+                .Contribution.attribute("generic.armor", "divide", "fixed", 1)).build(), "moda");
+        r.registerStatus(StatusDefinition.builder("a:form").contribute(com.mahghuuuls.statusworks.api.definition
+                .Contribution.attribute("generic.armor", "add", "per_fill", 1)).build(), "moda");
+        r.registerPool(PoolDefinition.builder("a:pform").capacity(5).contribute(com.mahghuuuls.statusworks.api
+                .definition.Contribution.attribute("generic.armor", "add", "per_stack", 1)).build(), "moda");
+        r.registerPool(PoolDefinition.builder("a:step").capacity(5).updateStep(0).build(), "moda");
+        r.registerStatus(StatusDefinition.builder("a:modded").contribute(com.mahghuuuls.statusworks.api.definition
+                .Contribution.attribute("somemod.mana", "add", "fixed", 1)).build(), "moda");
+        List<DefinitionRegistry.Error> errors = r.freeze();
+        assertNotNull(r.status("a:ok"));
+        assertNotNull(r.status("a:typed"));
+        assertNotNull(r.status("a:modded"), "another mod's attribute waits for the server start");
+        java.util.Map<String, String> reasons = new java.util.LinkedHashMap<>();
+        errors.forEach(e -> reasons.put(e.id, e.reason));
+        assertEquals("unknown-attribute", reasons.get("a:typo"));
+        assertEquals("unknown-type", reasons.get("a:notype"));
+        assertEquals("unknown-mode", reasons.get("a:op"));
+        assertEquals("bad-form", reasons.get("a:form"));
+        assertEquals("bad-form", reasons.get("a:pform"));
+        assertEquals("bad-step", reasons.get("a:step"));
+
+        List<DefinitionRegistry.Error> late = r.checkLateAttributes("othermod.power"::equals);
+        assertEquals(1, late.size());
+        assertEquals("a:modded", late.get(0).id);
+        assertNull(r.status("a:modded"));
+        assertTrue(r.isInvalid("a:modded"));
+        assertNotNull(r.status("a:ok"), "vanilla attributes are always known");
+    }
+
+    @Test
+    void aDuplicatePoolIdKeepsTheFirst() {
+        DefinitionRegistry r = new DefinitionRegistry();
+        r.registerPool(PoolDefinition.builder("a:p").capacity(3).build(), "moda");
+        r.registerPool(PoolDefinition.builder("a:p").capacity(9).build(), "modb");
+        List<DefinitionRegistry.Error> errors = r.freeze();
+        assertEquals("duplicate-id", errors.get(0).reason);
+        assertEquals(3, r.pool("a:p").definition().capacity(), 1e-9);
+    }
 
     @Test
     void validDefinitionsKeepRegistrationOrder() {

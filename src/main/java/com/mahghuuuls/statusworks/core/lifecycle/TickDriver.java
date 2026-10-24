@@ -1,8 +1,11 @@
 package com.mahghuuuls.statusworks.core.lifecycle;
 
+import com.mahghuuuls.statusworks.core.contribution.ContributionManager;
 import com.mahghuuuls.statusworks.core.diagnostic.DiagnosticLog;
 import com.mahghuuuls.statusworks.core.diagnostic.Timings;
+import com.mahghuuuls.statusworks.core.state.CooldownOperations;
 import com.mahghuuuls.statusworks.core.state.EntityState;
+import com.mahghuuuls.statusworks.core.state.PoolOperations;
 import com.mahghuuuls.statusworks.core.state.StatusOperations;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
@@ -36,11 +39,18 @@ public final class TickDriver {
     /** Server ticks since start, for the one-tick memory of the classifier. */
     private long serverTicks;
     private final StatusOperations statuses;
+    private final PoolOperations pools;
+    private final CooldownOperations cooldowns;
+    private final ContributionManager contributions;
     private final Timings timings;
     private final DiagnosticLog diagnosticLog;
 
-    public TickDriver(StatusOperations statuses, Timings timings, DiagnosticLog diagnosticLog) {
+    public TickDriver(StatusOperations statuses, PoolOperations pools, CooldownOperations cooldowns,
+                      ContributionManager contributions, Timings timings, DiagnosticLog diagnosticLog) {
         this.statuses = statuses;
+        this.pools = pools;
+        this.cooldowns = cooldowns;
+        this.contributions = contributions;
         this.timings = timings;
         this.diagnosticLog = diagnosticLog;
     }
@@ -49,6 +59,16 @@ public final class TickDriver {
     public void track(EntityLivingBase entity) {
         if (entity.world != null && !entity.world.isRemote) {
             active.add(entity.world, entity, entity.ticksExisted);
+        }
+    }
+
+    /** Every processed entity with its state, in every world; for one-off sweeps such as the server-start check. */
+    public void forEachTracked(java.util.function.BiConsumer<EntityLivingBase, EntityState> action) {
+        for (ActiveEntities.Tracked tracked : active.all()) {
+            EntityState state = tracked.entity.getCapability(EntityState.CAPABILITY, null);
+            if (state != null) {
+                action.accept(tracked.entity, state);
+            }
         }
     }
 
@@ -87,7 +107,10 @@ public final class TickDriver {
                 active.remove(entity);
                 continue;
             }
+            // Statuses, then pools, then cooldowns; each kind in its own registration order.
             statuses.tick(entity, state);
+            pools.tick(entity, state);
+            cooldowns.tick(entity, state);
             if (state.isEmpty()) {
                 active.remove(entity);
             }
@@ -157,6 +180,7 @@ public final class TickDriver {
             return;
         }
         statuses.reportLoad(entity, state);
+        contributions.onJoin(entity, state);
         if (!state.isEmpty()) {
             // The event's world, not entity.world: a player changing dimension joins the new world before
             // PlayerList.transferEntityToWorld sets its world field.

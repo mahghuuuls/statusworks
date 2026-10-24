@@ -150,6 +150,19 @@ class CallbackRunnerTest {
     }
 
     @Test
+    void aQuestionIsAnsweredNowAndAFailureGivesTheFallback() {
+        assertTrue(runner.ask("type:t", "applies_to", () -> true, false));
+        assertFalse(runner.ask("type:t", "applies_to", () -> {
+            throw new IllegalStateException("test");
+        }, false));
+        assertEquals(1, errors.size());
+        boolean[] askedInside = new boolean[1];
+        runner.run("a:s", "applied", () -> askedInside[0] = runner.ask("type:t", "applies_to", () -> true, false));
+        assertTrue(askedInside[0], "a question inside a callback is answered at once, not queued");
+        assertFalse(runner.inCallback());
+    }
+
+    @Test
     void inCallbackIsTrueOnlyWhileACallbackRuns() {
         assertFalse(runner.inCallback());
         boolean[] inside = new boolean[1];

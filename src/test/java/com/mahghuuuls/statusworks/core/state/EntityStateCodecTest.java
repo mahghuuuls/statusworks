@@ -48,7 +48,7 @@ class EntityStateCodecTest {
         EntityState restored = new EntityState();
         codec.read(restored, nbt);
 
-        assertEquals(1, nbt.getInteger("v"));
+        assertEquals(EntityStateCodec.VERSION, nbt.getInteger("v"));
         assertEquals("t:shared", restored.statuses().get(0).id, "registration order is kept");
         StatusState rs = restored.status("t:shared");
         StatusState ri = restored.status("t:indep");
@@ -131,6 +131,139 @@ class EntityStateCodecTest {
         assertEquals(8, note.countBefore);
         assertEquals(5, note.countAfter);
         assertNull(note.reason);
+    }
+
+    @Test
+    void poolsRoundTripAndAVersionOneSaveStillLoads() {
+        DefinitionRegistry registry = new DefinitionRegistry();
+        com.mahghuuuls.statusworks.api.definition.PoolDefinition p = com.mahghuuuls.statusworks.api.definition
+                .PoolDefinition.builder("t:pool").capacity(20).startAmount(10).toTarget(0, 100).lifetime(400)
+                .build();
+        registry.registerPool(p, "test");
+        registry.freeze();
+        EntityStateCodec codec = new EntityStateCodec(registry, (id, why) -> { });
+        EntityState state = new EntityState();
+        com.mahghuuuls.statusworks.core.rule.PoolState pool = com.mahghuuuls.statusworks.core.rule.PoolMath.create(p);
+        state.putPool("t:pool", 0, pool);
+        com.mahghuuuls.statusworks.core.rule.PoolMath.advance(p, pool, 30);
+        com.mahghuuuls.statusworks.core.rule.PoolMath.setPaused(pool, true);
+        com.mahghuuuls.statusworks.core.rule.PoolMath.advance(p, pool, 10);
+        NBTTagCompound nbt = codec.write(state);
+
+        EntityState restored = new EntityState();
+        codec.read(restored, nbt);
+        com.mahghuuuls.statusworks.core.rule.PoolState r = restored.pool("t:pool");
+        assertEquals(7, r.amount(), 1e-9);
+        assertEquals(20, r.capacity(), 1e-9);
+        assertEquals(40, r.age());
+        assertEquals(30, r.progressAge());
+        assertTrue(r.paused());
+        assertEquals(360, com.mahghuuuls.statusworks.core.rule.PoolMath.remainingLifetime(r));
+        assertEquals(70, com.mahghuuuls.statusworks.core.rule.PoolMath.remainingToDeadline(p, r));
+        assertTrue(restored.takeLoadNotes().isEmpty());
+
+        nbt.removeTag("pools");
+        nbt.setInteger("v", 1);
+        EntityState old = new EntityState();
+        codec.read(old, nbt);
+        assertTrue(old.isEmpty());
+    }
+
+    @Test
+    void aLoweredDefinitionCapacityReachesASavedPool() {
+        DefinitionRegistry before = new DefinitionRegistry();
+        com.mahghuuuls.statusworks.api.definition.PoolDefinition wide = com.mahghuuuls.statusworks.api.definition
+                .PoolDefinition.builder("t:mana").capacity(100).startAmount(80).build();
+        before.registerPool(wide, "test");
+        before.freeze();
+        EntityState state = new EntityState();
+        state.putPool("t:mana", 0, com.mahghuuuls.statusworks.core.rule.PoolMath.create(wide));
+        NBTTagCompound nbt = new EntityStateCodec(before, (id, why) -> { }).write(state);
+
+        DefinitionRegistry after = new DefinitionRegistry();
+        after.registerPool(com.mahghuuuls.statusworks.api.definition.PoolDefinition.builder("t:mana")
+                .capacity(50).build(), "test");
+        after.freeze();
+        EntityState restored = new EntityState();
+        new EntityStateCodec(after, (id, why) -> { }).read(restored, nbt);
+        assertEquals(50, restored.pool("t:mana").capacity(), 1e-9);
+        assertEquals(50, restored.pool("t:mana").amount(), 1e-9);
+        EntityState.LoadNote note = restored.takeLoadNotes().get(0);
+        assertEquals(80, note.countBefore, 1e-9);
+        assertEquals(50, note.countAfter, 1e-9);
+    }
+
+    @Test
+    void aSavedPoolWithoutItsDefinitionEndsInvalid() {
+        DefinitionRegistry before = new DefinitionRegistry();
+        com.mahghuuuls.statusworks.api.definition.PoolDefinition p = com.mahghuuuls.statusworks.api.definition
+                .PoolDefinition.builder("t:gone").capacity(10).startAmount(4).build();
+        before.registerPool(p, "test");
+        before.freeze();
+        EntityState state = new EntityState();
+        state.putPool("t:gone", 0, com.mahghuuuls.statusworks.core.rule.PoolMath.create(p));
+        NBTTagCompound nbt = new EntityStateCodec(before, (id, why) -> { }).write(state);
+
+        DefinitionRegistry after = new DefinitionRegistry();
+        after.freeze();
+        EntityState restored = new EntityState();
+        new EntityStateCodec(after, (id, why) -> { }).read(restored, nbt);
+        assertNull(restored.pool("t:gone"));
+        EntityState.LoadNote note = restored.takeLoadNotes().get(0);
+        assertEquals("pool", note.kind);
+        assertEquals(4, note.countBefore, 1e-9);
+        assertEquals("invalid", note.reason);
+    }
+
+    @Test
+    void runningCooldownsRoundTripAndARemovedOneEndsInvalid() {
+        DefinitionRegistry registry = new DefinitionRegistry();
+        registry.registerCooldown(com.mahghuuuls.statusworks.api.definition.CooldownDefinition.builder("t:dash")
+                .build(), "test");
+        registry.registerCooldown(com.mahghuuuls.statusworks.api.definition.CooldownDefinition.builder("t:old")
+                .build(), "test");
+        registry.freeze();
+        EntityStateCodec codec = new EntityStateCodec(registry, (id, why) -> { });
+        EntityState state = new EntityState();
+        com.mahghuuuls.statusworks.core.rule.CooldownState dash = com.mahghuuuls.statusworks.core.rule.CooldownRules
+                .start(300);
+        for (int i = 0; i < 60; i++) {
+            com.mahghuuuls.statusworks.core.rule.CooldownRules.tick(dash);
+        }
+        state.putCooldown("t:dash", 0, dash);
+        state.putCooldown("t:old", 1, com.mahghuuuls.statusworks.core.rule.CooldownRules.start(50));
+        NBTTagCompound nbt = codec.write(state);
+
+        EntityState restored = new EntityState();
+        codec.read(restored, nbt);
+        assertEquals(240, com.mahghuuuls.statusworks.core.rule.CooldownRules.remaining(restored.cooldown("t:dash")));
+
+        DefinitionRegistry after = new DefinitionRegistry();
+        after.registerCooldown(com.mahghuuuls.statusworks.api.definition.CooldownDefinition.builder("t:dash")
+                .build(), "test");
+        after.freeze();
+        EntityState trimmed = new EntityState();
+        new EntityStateCodec(after, (id, why) -> { }).read(trimmed, nbt);
+        assertNull(trimmed.cooldown("t:old"));
+        EntityState.LoadNote note = trimmed.takeLoadNotes().get(0);
+        assertEquals("cooldown", note.kind);
+        assertEquals("invalid", note.reason);
+    }
+
+    @Test
+    void theContributionRecordIsSavedEvenWithoutInstances() {
+        DefinitionRegistry registry = new DefinitionRegistry();
+        registry.freeze();
+        EntityStateCodec codec = new EntityStateCodec(registry, (id, why) -> { });
+        EntityState state = new EntityState();
+        state.contributions().restore("status:a:hp#0", new com.mahghuuuls.statusworks.core.contribution.Applied(
+                true, "generic.maxHealth", 0, 10));
+        state.contributions().restore("status:a:pow#0", new com.mahghuuuls.statusworks.core.contribution.Applied(
+                false, "t:power", -1, 3));
+        NBTTagCompound nbt = codec.write(state);
+        EntityState restored = new EntityState();
+        codec.read(restored, nbt);
+        assertEquals(state.contributions().entries(), restored.contributions().entries());
     }
 
     @Test

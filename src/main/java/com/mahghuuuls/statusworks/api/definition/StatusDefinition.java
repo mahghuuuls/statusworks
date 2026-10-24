@@ -6,6 +6,9 @@ import com.mahghuuuls.statusworks.api.callback.StatusQuantityCallback;
 import com.mahghuuuls.statusworks.api.callback.StatusRemovedCallback;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * An immutable status definition: a named condition with a count of stacks and the rules for its timers.
@@ -38,6 +41,7 @@ public final class StatusDefinition {
     @Nullable private final StatusRemovedCallback onRemoved;
     private final int interval;
     @Nullable private final StatusIntervalCallback onInterval;
+    private final List<Contribution> contributions;
 
     private StatusDefinition(Builder builder) {
         this.id = builder.id;
@@ -58,6 +62,7 @@ public final class StatusDefinition {
         this.onRemoved = builder.onRemoved;
         this.interval = builder.interval;
         this.onInterval = builder.onInterval;
+        this.contributions = Collections.unmodifiableList(new ArrayList<>(builder.contributions));
     }
 
     public static Builder builder(String id) {
@@ -153,6 +158,11 @@ public final class StatusDefinition {
         return onInterval;
     }
 
+    /** The managed contributions, in declaration order. */
+    public List<Contribution> contributions() {
+        return contributions;
+    }
+
     /**
      * Builder with the documented defaults: limit 1, 200 ticks, shared expiration, reset, shared ownership, and
      * {@code clear} on player death.
@@ -172,6 +182,7 @@ public final class StatusDefinition {
         private StatusRemovedCallback onRemoved;
         private int interval;
         private StatusIntervalCallback onInterval;
+        private final List<Contribution> contributions = new ArrayList<>();
 
         private Builder(String id) {
             this.id = id;
@@ -264,6 +275,12 @@ public final class StatusDefinition {
         public Builder onInterval(int ticks, StatusIntervalCallback callback) {
             this.interval = ticks;
             this.onInterval = callback;
+            return this;
+        }
+
+        /** Adds a managed contribution; {@code fixed} and {@code per_stack} forms apply to statuses. */
+        public Builder contribute(Contribution contribution) {
+            this.contributions.add(contribution);
             return this;
         }
 

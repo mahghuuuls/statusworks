@@ -1,7 +1,11 @@
 package com.mahghuuuls.statusworks.command;
 
+import com.mahghuuuls.statusworks.api.PoolSnapshot;
 import com.mahghuuuls.statusworks.api.definition.StatusDefinition;
 import com.mahghuuuls.statusworks.core.definition.DefinitionRegistry;
+import com.mahghuuuls.statusworks.core.diagnostic.Numbers;
+import com.mahghuuuls.statusworks.core.state.PoolOperations;
+import com.mahghuuuls.statusworks.core.rule.CooldownRules;
 import com.mahghuuuls.statusworks.core.rule.StatusRules;
 import com.mahghuuuls.statusworks.core.rule.StatusState;
 import com.mahghuuuls.statusworks.core.state.EntityState;
@@ -62,14 +66,17 @@ final class InspectCommand extends CommandBase {
             return;
         }
         for (EntityState.LoadNote note : state.loadNotes()) {
-            context.reply(sender, "  loaded " + note.id + ": " + (note.reason != null
-                    ? "ended with reason " + note.reason + " (saved count " + note.countBefore + ")"
-                    : "fitted to its changed definition, count " + note.countBefore + " -> " + note.countAfter));
+            context.reply(sender, "  loaded " + note.kind + " " + note.id + ": " + (note.reason != null
+                    ? "ended with reason " + note.reason + " (saved " + Numbers.format(note.countBefore) + ")"
+                    : "fitted to its changed definition, " + Numbers.format(note.countBefore) + " -> "
+                    + Numbers.format(note.countAfter)));
         }
-        if (state.isEmpty()) {
+        if (state.hasNothingToSave()) {
             context.reply(sender, "  no tracked state");
             return;
         }
+        context.reply(sender, "  health=" + Numbers.format(((EntityLivingBase) entity).getHealth()) + "/"
+                + Numbers.format(((EntityLivingBase) entity).getMaxHealth()));
         for (EntityState.StatusSlot slot : state.statuses()) {
             DefinitionRegistry.Entry entry = context.registry.status(slot.id);
             if (entry == null) {
@@ -97,6 +104,45 @@ final class InspectCommand extends CommandBase {
                 context.reply(sender, line.toString().trim());
             }
         }
+        for (EntityState.PoolSlot slot : state.pools()) {
+            DefinitionRegistry.PoolEntry entry = context.registry.pool(slot.id);
+            if (entry == null) {
+                context.reply(sender, "  pool " + slot.id + " (definition missing)");
+                continue;
+            }
+            PoolSnapshot p = PoolOperations.snapshot(entry.definition(), slot.state);
+            StringBuilder line = new StringBuilder("  pool ").append(slot.id)
+                    .append(" amount=").append(Numbers.format(p.amount()))
+                    .append('/').append(Numbers.format(p.capacity()))
+                    .append(" fill=").append(Numbers.format(p.fill()))
+                    .append(" lifetime=").append(p.remainingLifetime())
+                    .append(" rule=").append(entry.definition().progression().text())
+                    .append(" progression=").append(p.progression().name().toLowerCase(java.util.Locale.ROOT));
+            if (!Double.isNaN(p.target())) {
+                line.append(" target=").append(Numbers.format(p.target()))
+                        .append(" deadlineIn=").append(p.remainingToDeadline());
+            }
+            line.append(" age=").append(slot.state.age());
+            context.reply(sender, line.toString());
+        }
+        for (java.util.Map.Entry<String, com.mahghuuuls.statusworks.core.contribution.Applied> e
+                : state.contributions().entries().entrySet()) {
+            com.mahghuuuls.statusworks.core.contribution.Applied a = e.getValue();
+            String where = a.attribute ? "attribute " + a.target + " op=" + a.operation + " current="
+                    + attributeValue((EntityLivingBase) entity, a.target) : "type " + a.target;
+            context.reply(sender, "  contribution " + e.getKey() + " " + where + " value=" + Numbers.format(a.value));
+        }
+        for (EntityState.CooldownSlot slot : state.cooldowns()) {
+            context.reply(sender, "  cooldown " + slot.id + " running=" + CooldownRules.running(slot.state)
+                    + " remaining=" + CooldownRules.remaining(slot.state) + " age=" + slot.state.age()
+                    + (context.registry.cooldown(slot.id) == null ? " (definition missing)" : ""));
+        }
+    }
+
+    private static String attributeValue(EntityLivingBase entity, String attribute) {
+        net.minecraft.entity.ai.attributes.IAttributeInstance instance = entity.getAttributeMap()
+                .getAttributeInstanceByName(attribute);
+        return instance == null ? "absent" : Numbers.format(instance.getAttributeValue());
     }
 
     @Override

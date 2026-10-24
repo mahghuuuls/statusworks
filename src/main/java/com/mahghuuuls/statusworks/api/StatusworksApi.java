@@ -1,5 +1,8 @@
 package com.mahghuuuls.statusworks.api;
 
+import com.mahghuuuls.statusworks.api.contribution.ContributionType;
+import com.mahghuuuls.statusworks.api.definition.CooldownDefinition;
+import com.mahghuuuls.statusworks.api.definition.PoolDefinition;
 import com.mahghuuuls.statusworks.api.definition.StatusDefinition;
 
 /**
@@ -15,7 +18,19 @@ public final class StatusworksApi {
     public interface Backend {
         RegistrationResult registerStatus(StatusDefinition definition);
 
+        RegistrationResult registerPool(PoolDefinition definition);
+
+        RegistrationResult registerCooldown(CooldownDefinition definition);
+
+        RegistrationResult registerContributionType(ContributionType type);
+
         StatusService statuses();
+
+        PoolService pools();
+
+        CooldownService cooldowns();
+
+        ContributionService contributions();
 
         boolean isFrozen();
     }
@@ -34,9 +49,51 @@ public final class StatusworksApi {
         return current.registerStatus(definition);
     }
 
+    /** Registers a pool definition for validation when definitions freeze. */
+    public static RegistrationResult registerPool(PoolDefinition definition) {
+        Backend current = backend;
+        if (current == null) {
+            return RegistrationResult.refused("Statusworks is not loaded yet");
+        }
+        return current.registerPool(definition);
+    }
+
+    /** Registers a cooldown definition for validation when definitions freeze. */
+    public static RegistrationResult registerCooldown(CooldownDefinition definition) {
+        Backend current = backend;
+        if (current == null) {
+            return RegistrationResult.refused("Statusworks is not loaded yet");
+        }
+        return current.registerCooldown(definition);
+    }
+
+    /** Registers an addon contribution type; definitions may name it once registered, before the freeze. */
+    public static RegistrationResult registerContributionType(ContributionType type) {
+        Backend current = backend;
+        if (current == null) {
+            return RegistrationResult.refused("Statusworks is not loaded yet");
+        }
+        return current.registerContributionType(type);
+    }
+
     public static StatusService statuses() {
         Backend current = requireBackend();
         return current.statuses();
+    }
+
+    public static PoolService pools() {
+        Backend current = requireBackend();
+        return current.pools();
+    }
+
+    public static CooldownService cooldowns() {
+        Backend current = requireBackend();
+        return current.cooldowns();
+    }
+
+    public static ContributionService contributions() {
+        Backend current = requireBackend();
+        return current.contributions();
     }
 
     /** Whether definitions are frozen; after that, registrations are refused. */

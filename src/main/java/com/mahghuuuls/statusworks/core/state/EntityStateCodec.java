@@ -1,6 +1,11 @@
 package com.mahghuuuls.statusworks.core.state;
 
+import com.mahghuuuls.statusworks.core.contribution.Applied;
 import com.mahghuuuls.statusworks.core.definition.DefinitionRegistry;
+import com.mahghuuuls.statusworks.core.rule.CooldownRules;
+import com.mahghuuuls.statusworks.core.rule.CooldownState;
+import com.mahghuuuls.statusworks.core.rule.PoolMath;
+import com.mahghuuuls.statusworks.core.rule.PoolState;
 import com.mahghuuuls.statusworks.core.rule.RemovalReason;
 import com.mahghuuuls.statusworks.core.rule.StatusRules;
 import com.mahghuuuls.statusworks.core.rule.StatusState;
@@ -13,20 +18,25 @@ import java.util.UUID;
 import java.util.function.BiConsumer;
 
 /**
- * The save format of {@link EntityState}, owned in one place. Version 1:
+ * The save format of {@link EntityState}, owned in one place. Version 4 (versions 1 to 3 lacked pools, cooldowns,
+ * or the contribution record, and are read the same way):
  *
  * <pre>
- * { v: 1, statuses: [ { id, age, groups: [ { srcMost, srcLeast, count, deadline, last,
- *                                            stacks: [ { at, n } ] } ] } ] }
+ * { v: 3, statuses: [ { id, age, groups: [ { srcMost, srcLeast, count, deadline, last,
+ *                                            stacks: [ { at, n } ] } ] } ],
+ *         pools: [ { id, amount, cap, capset, age, life, paused, page, deadline, done } ],
+ *         cooldowns: [ { id, age, end } ],
+ *         contrib: [ { key, attr, target, op, value } ] }
  * </pre>
  *
  * <p>Reading restores instances as they were: no callback runs and nothing counts as a new application. An
  * instance whose definition is gone or disabled ends with reason {@code invalid}; one whose definition changed
- * is fitted by {@link StatusRules#fit}. Both leave a {@link EntityState.LoadNote} for the diagnostic log.</p>
+ * is fitted by {@link StatusRules#fit} or {@link PoolMath#fit}. Both leave a {@link EntityState.LoadNote} for the
+ * diagnostic log. A restored pool fires no boundary callback.</p>
  */
 public final class EntityStateCodec {
 
-    public static final int VERSION = 1;
+    public static final int VERSION = 4;
 
     private final DefinitionRegistry registry;
     /** Told about saved state that loading ended or fitted: (definition id, message for the server log). */
@@ -38,11 +48,11 @@ public final class EntityStateCodec {
     }
 
     public NBTTagCompound write(EntityState state) {
-        if (state.isEmpty() && state.newerFormat() != null) {
+        if (state.hasNothingToSave() && state.newerFormat() != null) {
             return state.newerFormat();
         }
         NBTTagCompound root = new NBTTagCompound();
-        if (state.isEmpty()) {
+        if (state.hasNothingToSave()) {
             return root;
         }
         root.setInteger("v", VERSION);
@@ -73,6 +83,43 @@ public final class EntityStateCodec {
             statuses.appendTag(s);
         }
         root.setTag("statuses", statuses);
+        NBTTagList pools = new NBTTagList();
+        for (EntityState.PoolSlot slot : state.pools()) {
+            PoolState p = slot.state;
+            NBTTagCompound t = new NBTTagCompound();
+            t.setString("id", slot.id);
+            t.setDouble("amount", p.amount());
+            t.setDouble("cap", p.capacity());
+            t.setBoolean("capset", p.capacitySet());
+            t.setLong("age", p.age());
+            t.setLong("life", p.lifetimeEnd());
+            t.setBoolean("paused", p.paused());
+            t.setLong("page", p.progressAge());
+            t.setLong("deadline", p.deadline());
+            t.setBoolean("done", p.targetDone());
+            pools.appendTag(t);
+        }
+        root.setTag("pools", pools);
+        NBTTagList cooldowns = new NBTTagList();
+        for (EntityState.CooldownSlot slot : state.cooldowns()) {
+            NBTTagCompound t = new NBTTagCompound();
+            t.setString("id", slot.id);
+            t.setLong("age", slot.state.age());
+            t.setLong("end", slot.state.end());
+            cooldowns.appendTag(t);
+        }
+        root.setTag("cooldowns", cooldowns);
+        NBTTagList contrib = new NBTTagList();
+        for (Map.Entry<String, Applied> e : state.contributions().entries().entrySet()) {
+            NBTTagCompound t = new NBTTagCompound();
+            t.setString("key", e.getKey());
+            t.setBoolean("attr", e.getValue().attribute);
+            t.setString("target", e.getValue().target);
+            t.setInteger("op", e.getValue().operation);
+            t.setDouble("value", e.getValue().value);
+            contrib.appendTag(t);
+        }
+        root.setTag("contrib", contrib);
         return root;
     }
 
@@ -96,7 +143,7 @@ public final class EntityStateCodec {
                 int saved = savedCount(s);
                 warn.accept(id, "saved status " + id + " ended with reason " + RemovalReason.INVALID.text() + ": its"
                         + (registry.isInvalid(id) ? " definition is invalid" : " definition is no longer registered"));
-                state.addLoadNote(new EntityState.LoadNote(id, saved, 0, RemovalReason.INVALID.text()));
+                state.addLoadNote(new EntityState.LoadNote("status", id, saved, 0, RemovalReason.INVALID.text()));
                 continue;
             }
             StatusState status = state.statusOrCreate(id, entry.order());
@@ -115,11 +162,59 @@ public final class EntityStateCodec {
             int saved = status.total();
             if (StatusRules.fit(entry.definition(), status)) {
                 warn.accept("fit:" + id, "saved status " + id + " was fitted to its changed definition");
-                state.addLoadNote(new EntityState.LoadNote(id, saved, status.total(), null));
+                state.addLoadNote(new EntityState.LoadNote("status", id, saved, status.total(), null));
             }
             if (status.isEmpty()) {
                 state.removeStatus(id);
             }
+        }
+        NBTTagList pools = root.getTagList("pools", Constants.NBT.TAG_COMPOUND);
+        for (int i = 0; i < pools.tagCount(); i++) {
+            NBTTagCompound t = pools.getCompoundTagAt(i);
+            String id = t.getString("id");
+            DefinitionRegistry.PoolEntry entry = registry.pool(id);
+            double saved = t.getDouble("amount");
+            if (entry == null) {
+                warn.accept("pool:" + id, "saved pool " + id + " ended with reason " + RemovalReason.INVALID.text()
+                        + ": its" + (registry.isInvalidPool(id) ? " definition is invalid"
+                        : " definition is no longer registered"));
+                state.addLoadNote(new EntityState.LoadNote("pool", id, saved, 0, RemovalReason.INVALID.text()));
+                continue;
+            }
+            PoolState pool = new PoolState();
+            pool.restore(saved, t.getDouble("cap"), t.getBoolean("capset"), t.getLong("age"), t.getLong("life"),
+                    t.getBoolean("paused"), t.getLong("page"), t.getLong("deadline"), t.getBoolean("done"));
+            if (PoolMath.fit(entry.definition(), pool)) {
+                warn.accept("poolfit:" + id, "saved pool " + id + " was fitted to its changed definition");
+                state.addLoadNote(new EntityState.LoadNote("pool", id, saved, pool.amount(), null));
+            }
+            state.putPool(id, entry.order(), pool);
+        }
+        NBTTagList cooldowns = root.getTagList("cooldowns", Constants.NBT.TAG_COMPOUND);
+        for (int i = 0; i < cooldowns.tagCount(); i++) {
+            NBTTagCompound t = cooldowns.getCompoundTagAt(i);
+            String id = t.getString("id");
+            CooldownState cooldown = new CooldownState();
+            cooldown.restore(t.getLong("age"), t.getLong("end"));
+            if (!CooldownRules.running(cooldown)) {
+                continue;
+            }
+            DefinitionRegistry.CooldownEntry entry = registry.cooldown(id);
+            if (entry == null) {
+                warn.accept("cooldown:" + id, "saved cooldown " + id + " ended with reason "
+                        + RemovalReason.INVALID.text() + ": its" + (registry.isInvalidCooldown(id)
+                        ? " definition is invalid" : " definition is no longer registered"));
+                state.addLoadNote(new EntityState.LoadNote("cooldown", id, CooldownRules.remaining(cooldown), 0,
+                        RemovalReason.INVALID.text()));
+                continue;
+            }
+            state.putCooldown(id, entry.order(), cooldown);
+        }
+        NBTTagList contrib = root.getTagList("contrib", Constants.NBT.TAG_COMPOUND);
+        for (int i = 0; i < contrib.tagCount(); i++) {
+            NBTTagCompound t = contrib.getCompoundTagAt(i);
+            state.contributions().restore(t.getString("key"), new Applied(t.getBoolean("attr"), t.getString("target"),
+                    t.getInteger("op"), t.getDouble("value")));
         }
     }
 

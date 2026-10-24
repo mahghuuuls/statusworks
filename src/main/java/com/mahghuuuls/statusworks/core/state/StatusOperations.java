@@ -8,19 +8,20 @@ import com.mahghuuuls.statusworks.api.definition.StatusDefinition;
 import com.mahghuuuls.statusworks.core.callback.CallbackRunner;
 import com.mahghuuuls.statusworks.core.definition.DefinitionRegistry;
 import com.mahghuuuls.statusworks.core.diagnostic.DiagnosticLog;
+import com.mahghuuuls.statusworks.core.diagnostic.Numbers;
 import com.mahghuuuls.statusworks.core.diagnostic.Warnings;
 import com.mahghuuuls.statusworks.core.rule.RemovalReason;
 import com.mahghuuuls.statusworks.core.rule.StatusRules;
 import com.mahghuuuls.statusworks.core.rule.StatusState;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
-import net.minecraftforge.common.util.FakePlayer;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -43,14 +44,18 @@ public final class StatusOperations implements StatusService {
     private final Warnings warnings;
     private final CallbackRunner callbacks;
     private final Consumer<EntityLivingBase> onStateAdded;
+    /** Told after every change of an entity's statuses, so its contributions follow. */
+    private final BiConsumer<EntityLivingBase, EntityState> changed;
 
     public StatusOperations(DefinitionRegistry registry, DiagnosticLog log, Warnings warnings,
-                            CallbackRunner callbacks, Consumer<EntityLivingBase> onStateAdded) {
+                            CallbackRunner callbacks, Consumer<EntityLivingBase> onStateAdded,
+                            BiConsumer<EntityLivingBase, EntityState> changed) {
         this.registry = registry;
         this.log = log;
         this.warnings = warnings;
         this.callbacks = callbacks;
         this.onStateAdded = onStateAdded;
+        this.changed = changed;
     }
 
     /** A checked call target: the living entity, its state, and the definition. */
@@ -78,26 +83,12 @@ public final class StatusOperations implements StatusService {
     }
 
     private Checked check(@Nullable Entity entity, @Nullable String id, boolean forChange) {
-        if (entity == null) {
-            return new Checked(null, "entity is null");
+        EntityTargets.Checked target = EntityTargets.check(entity, forChange);
+        if (target.failure != null) {
+            return new Checked(null, target.failure);
         }
-        if (entity.world == null || entity.world.isRemote) {
-            return new Checked(null, "tracked state is changed and read on the server only");
-        }
-        if (!(entity instanceof EntityLivingBase)) {
-            return new Checked(null, "entity " + entity.getName() + " is not a living entity");
-        }
-        if (entity instanceof FakePlayer) {
-            return new Checked(null, "entity " + entity.getName() + " is a fake player");
-        }
-        EntityLivingBase living = (EntityLivingBase) entity;
-        EntityState state = EntityState.CAPABILITY == null ? null : living.getCapability(EntityState.CAPABILITY, null);
-        if (state == null) {
-            return new Checked(null, "entity " + entity.getName() + " cannot hold tracked state");
-        }
-        if (forChange && !living.isEntityAlive()) {
-            return new Checked(null, "entity " + entity.getName() + " is dead");
-        }
+        EntityLivingBase living = target.entity;
+        EntityState state = target.state;
         if (id == null) {
             return new Checked(null, "definition id is null");
         }
@@ -243,6 +234,7 @@ public final class StatusOperations implements StatusService {
         }
         String reason = after == 0 && before > 0 ? reasonWhenEnded.text() : null;
         logChange(entity, id, before, after, cause, reason);
+        changed.accept(entity, state);
         StatusContext context = new StatusContext(entity, id, before, after, source, reason);
         callbacks.batch(() -> {
             if (created && after > 0 && def.onApplied() != null) {
@@ -286,16 +278,60 @@ public final class StatusOperations implements StatusService {
         }
     }
 
-    /** Writes what loading ended or fitted to the diagnostic log, once the entity is in a world. */
+    /**
+     * Ends, with reason {@code invalid}, every instance of any kind on the entity whose definition is no longer
+     * valid (the server-start attribute check can disable a definition after entities in always-loaded chunks
+     * were restored). No callback runs: the definition is gone. Then its contributions follow.
+     */
+    public void endOrphans(EntityLivingBase entity, EntityState state, DefinitionRegistry registry) {
+        boolean changedAny = false;
+        for (EntityState.StatusSlot slot : state.statuses()) {
+            if (registry.status(slot.id) == null) {
+                int before = slot.state.total();
+                state.removeStatus(slot.id);
+                logChange(entity, slot.id, before, 0, CAUSE_LOAD, RemovalReason.INVALID.text());
+                changedAny = true;
+            }
+        }
+        for (EntityState.PoolSlot slot : state.pools()) {
+            if (registry.pool(slot.id) == null) {
+                state.removePool(slot.id);
+                logEnd(entity, slot.id, "pool", Numbers.format(slot.state.amount()));
+                changedAny = true;
+            }
+        }
+        for (EntityState.CooldownSlot slot : state.cooldowns()) {
+            if (registry.cooldown(slot.id) == null) {
+                state.removeCooldown(slot.id);
+                logEnd(entity, slot.id, "cooldown", Integer.toString(
+                        com.mahghuuuls.statusworks.core.rule.CooldownRules.remaining(slot.state)));
+                changedAny = true;
+            }
+        }
+        if (changedAny) {
+            changed.accept(entity, state);
+        }
+    }
+
+    private void logEnd(EntityLivingBase entity, String id, String kind, String before) {
+        if (log.isEnabled()) {
+            log.change(id, entityKeys(entity), entityLabel(entity), kind, before, "0", CAUSE_LOAD,
+                    RemovalReason.INVALID.text());
+        }
+    }
+
+    /** Writes what loading ended or fitted, for every kind, to the diagnostic log once the entity is in a world. */
     public void reportLoad(EntityLivingBase entity, EntityState state) {
         for (EntityState.LoadNote note : state.takeLoadNotes()) {
+            if (!log.isEnabled()) {
+                continue;
+            }
             if (note.reason == null && note.countBefore == note.countAfter) {
-                if (log.isEnabled()) {
-                    log.note("fitted entity=" + entityLabel(entity) + " def=" + note.id + " count=" + note.countAfter
-                            + " cause=" + CAUSE_LOAD);
-                }
+                log.note("fitted entity=" + entityLabel(entity) + " kind=" + note.kind + " def=" + note.id
+                        + " value=" + Numbers.format(note.countAfter) + " cause=" + CAUSE_LOAD);
             } else {
-                logChange(entity, note.id, note.countBefore, note.countAfter, CAUSE_LOAD, note.reason);
+                log.change(note.id, entityKeys(entity), entityLabel(entity), note.kind,
+                        Numbers.format(note.countBefore), Numbers.format(note.countAfter), CAUSE_LOAD, note.reason);
             }
         }
     }

@@ -96,6 +96,15 @@ final class ActiveEntities {
         return entries == null ? new ArrayList<>() : new ArrayList<>(entries.values());
     }
 
+    /** A copy of every tracked entity in every world. */
+    List<Tracked> all() {
+        List<Tracked> out = new ArrayList<>();
+        for (LinkedHashMap<Integer, Tracked> world : byWorld.values()) {
+            out.addAll(world.values());
+        }
+        return out;
+    }
+
     int size() {
         int total = 0;
         for (LinkedHashMap<Integer, Tracked> world : byWorld.values()) {

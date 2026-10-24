@@ -8,6 +8,8 @@ import com.mahghuuuls.statusworks.core.state.EntityState;
 import com.mahghuuuls.statusworks.core.state.EntityStateProvider;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.ai.attributes.IAttributeInstance;
+import net.minecraft.entity.monster.EntityZombie;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.util.EnumFacing;
 import net.minecraftforge.common.MinecraftForge;
@@ -16,6 +18,7 @@ import net.minecraftforge.common.capabilities.CapabilityManager;
 import net.minecraftforge.common.config.Config;
 import net.minecraftforge.common.config.ConfigManager;
 import net.minecraftforge.common.util.FakePlayer;
+import net.minecraftforge.common.util.FakePlayerFactory;
 import net.minecraftforge.event.AttachCapabilitiesEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLConstructionEvent;
@@ -27,7 +30,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.annotation.Nullable;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Mod entry point. CraftTweaker is optional and declared with an inclusive minimum and no
@@ -80,12 +85,15 @@ public class StatusworksMod {
 
     @Mod.EventHandler
     public void loadComplete(FMLLoadCompleteEvent event) {
+        core.contributionTypes.freeze();
         List<DefinitionRegistry.Error> errors = core.registry.freeze();
         for (DefinitionRegistry.Error error : errors) {
             LOGGER.error("Statusworks: invalid definition {}", error);
         }
-        LOGGER.info("Statusworks definitions frozen: {} statuses valid, {} invalid, {} errors",
-                core.registry.statuses().size(), core.registry.invalid().size(), errors.size());
+        LOGGER.info("Statusworks definitions frozen: {} statuses valid, {} invalid; {} pools valid, {} invalid; "
+                        + "{} cooldowns valid, {} invalid; {} errors", core.registry.statuses().size(),
+                core.registry.invalid().size(), core.registry.pools().size(), core.registry.invalidPools().size(),
+                core.registry.cooldowns().size(), core.registry.invalidCooldowns().size(), errors.size());
         if (ServerConfig.strictMode && !errors.isEmpty()) {
             StringBuilder message = new StringBuilder("Statusworks strict mode: ").append(errors.size())
                     .append(" invalid definition error(s)");
@@ -98,8 +106,41 @@ public class StatusworksMod {
 
     @Mod.EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
+        checkModdedAttributes(event);
         event.registerServerCommand(new StatusworksCommand(new StatusworksCommand.Context(core.statuses,
-                core.registry, core.diagnosticLog, core.timings, core.errorCounts, LOGGER)));
+                core.pools, core.cooldowns, core.registry, core.diagnosticLog, core.timings, core.errorCounts,
+                LOGGER)));
+    }
+
+    /**
+     * Attribute ids from other mods cannot be known when definitions freeze, since 1.12 keeps no list of
+     * attributes. Once the overworld exists, a test player and a test zombie show which attributes this server
+     * has; a definition that names any other non-vanilla attribute is disabled now, like any invalid definition.
+     */
+    private void checkModdedAttributes(FMLServerStartingEvent event) {
+        net.minecraft.world.WorldServer overworld = event.getServer().getWorld(0);
+        Set<String> known = new HashSet<>();
+        FakePlayer player = FakePlayerFactory.getMinecraft(overworld);
+        for (IAttributeInstance attribute : player.getAttributeMap().getAllAttributes()) {
+            known.add(attribute.getAttribute().getName());
+        }
+        for (IAttributeInstance attribute : new EntityZombie(overworld).getAttributeMap().getAllAttributes()) {
+            known.add(attribute.getAttribute().getName());
+        }
+        List<DefinitionRegistry.Error> errors = core.registry.checkLateAttributes(known::contains);
+        for (DefinitionRegistry.Error error : errors) {
+            LOGGER.error("Statusworks: invalid definition {}", error);
+        }
+        if (!errors.isEmpty()) {
+            LOGGER.info("Statusworks: {} definition(s) disabled for attributes this server does not have",
+                    errors.size());
+            // Entities in always-loaded chunks were restored before this check; end their now-invalid instances.
+            core.tickDriver.forEachTracked((entity, state) -> core.statuses.endOrphans(entity, state, core.registry));
+        }
+        if (ServerConfig.strictMode && !errors.isEmpty()) {
+            throw new IllegalStateException("Statusworks strict mode: " + errors.size()
+                    + " definition(s) name attributes this server does not have; first: " + errors.get(0));
+        }
     }
 
     @SubscribeEvent
@@ -108,7 +149,8 @@ public class StatusworksMod {
         // Server side only: clients never hold tracked state, they receive what they may see.
         if (entity instanceof EntityLivingBase && !(entity instanceof FakePlayer)
                 && entity.world != null && !entity.world.isRemote) {
-            event.addCapability(EntityStateProvider.KEY, new EntityStateProvider(core.codec));
+            event.addCapability(EntityStateProvider.KEY, new EntityStateProvider(core.codec, core.contributions,
+                    (EntityLivingBase) entity));
         }
     }
 }
