@@ -30,6 +30,8 @@ import net.minecraftforge.common.util.FakePlayerFactory;
  *   <li>{@code bulk <duration>}: applies the shared test status with that duration to every zombie named
  *   {@code stwbulk} within 64 blocks.</li>
  *   <li>{@code bulkpool}: gives the draining speed pool to every zombie named {@code stwbulk} within 64 blocks.</li>
+ *   <li>{@code bulkmark}: the sender marks every zombie named {@code stwbulk} within 64 blocks with the unlimited
+ *   test mark.</li>
  * </ul>
  */
 final class DevTestCommand extends CommandBase {
@@ -41,7 +43,7 @@ final class DevTestCommand extends CommandBase {
 
     @Override
     public String getUsage(ICommandSender sender) {
-        return "/stwdev <dead|nonliving|fakeplayer|unknown|spawn <n>|bulk <duration>|bulkpool>";
+        return "/stwdev <dead|nonliving|fakeplayer|unknown|spawn <n>|bulk <duration>|bulkpool|bulkmark>";
     }
 
     @Override
@@ -128,6 +130,20 @@ final class DevTestCommand extends CommandBase {
                     }
                 }
                 log(sender, "bulkpool gave " + pool + " to " + created + " zombies");
+                break;
+            }
+            case "bulkmark": {
+                String mark = DevTestMod.id("mnone");
+                Entity source = sender.getCommandSenderEntity();
+                int created = 0;
+                for (EntityZombie z : world.getEntitiesWithinAABB(EntityZombie.class,
+                        new net.minecraft.util.math.AxisAlignedBB(pos).grow(64))) {
+                    if ("stwbulk".equals(z.getCustomNameTag())
+                            && StatusworksApi.marks().mark(source, z, mark).succeeded()) {
+                        created++;
+                    }
+                }
+                log(sender, "bulkmark marked " + created + " zombies with " + mark);
                 break;
             }
             default:
