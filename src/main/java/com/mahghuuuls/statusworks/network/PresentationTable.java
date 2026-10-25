@@ -59,7 +59,8 @@ public final class PresentationTable {
         if (p.hidden()) {
             return;
         }
-        String name = p.name() != null ? p.name() : id;
+        // Without a name, the id's path: "hp10" rather than "mymod:hp10".
+        String name = p.name() != null ? p.name() : id.substring(id.indexOf(':') + 1);
         HudDefinition row = new HudDefinition(rows.size(), id, kind, name, p.name() != null && p.nameIsKey(),
                 p.description(), p.descriptionIsKey(), p.iconItem(), p.iconMeta(), p.iconTexture(), p.showCount(),
                 p.showAmount(), p.showTime(), p.decimals(), p.priority(), limit, timerMode);

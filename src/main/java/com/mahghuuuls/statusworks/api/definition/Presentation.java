@@ -8,7 +8,7 @@ import javax.annotation.Nullable;
  * has, its order, and for a mark on whose HUD it appears. Presentation never changes gameplay.
  *
  * <p>Build one with {@link #builder()} and give it to a definition builder's {@code presentation(...)}. A
- * definition without one uses {@link #DEFAULT}: shown, named by its id, the generic icon, every field, 0
+ * definition without one uses {@link #DEFAULT}: shown, named by its id's path, the generic icon, every field, 0
  * decimals, priority 0, and for a mark the source's HUD only.</p>
  */
 public final class Presentation {
@@ -59,7 +59,7 @@ public final class Presentation {
         return hidden;
     }
 
-    /** The display name, or null to show the definition id. */
+    /** The display name, or null to show the definition id's path (the part after the colon). */
     @Nullable
     public String name() {
         return name;

@@ -91,7 +91,7 @@ class OwnEntriesTest {
         assertEquals("Shown", first.name);
         assertEquals(5, first.limit);
         assertEquals("shared", first.timerMode);
-        assertEquals("t:per", table.status("t:per").name, "no name: the id");
+        assertEquals("per", table.status("t:per").name, "no name: the id's path");
         assertEquals(1, table.pool("t:pool").decimals);
         assertEquals("lifetime", table.pool("t:pool").timerMode);
         assertTrue(table.rows().indexOf(table.pool("t:pool")) > table.rows().indexOf(table.status("t:none")));

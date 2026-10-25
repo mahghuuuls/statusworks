@@ -19,7 +19,8 @@ public final class ClientSetup {
         ClientStore store = new ClientStore(settings, logger);
         StatusworksNetwork.setReceiver(store);
         MinecraftForge.EVENT_BUS.register(store);
-        MinecraftForge.EVENT_BUS.register(new HudRenderer(store, settings));
-        MinecraftForge.EVENT_BUS.register(new DetailView(store, settings));
+        HudRenderer hud = new HudRenderer(store, settings);
+        MinecraftForge.EVENT_BUS.register(hud);
+        MinecraftForge.EVENT_BUS.register(new DetailView(hud));
     }
 }
