@@ -34,6 +34,11 @@ final class MarkRecord {
     transient boolean ended;
     /** Inactive only because the participants are beyond the maximum distance; then no timeout counts. */
     transient boolean distanceOnly;
+    /**
+     * Inactive because a participant is not loaded (or not checked yet since the mark loaded): only then does a
+     * joining participant keep the mark's recorded contributions during its join grace.
+     */
+    transient boolean partnerMissing = true;
     /** Contribution keys of each side, built once: the same keys come back on every reconcile. */
     @Nullable private transient String[] sourceKeys;
     @Nullable private transient String[] targetKeys;

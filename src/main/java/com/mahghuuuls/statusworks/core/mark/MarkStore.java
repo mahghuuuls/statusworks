@@ -55,10 +55,13 @@ import java.util.function.Consumer;
  * a world again within one tick and is not loaded anywhere, so a teleport by another mod that skips the travel
  * event does not end its marks.</p>
  *
- * <p>Contributions follow activity, with one rule for the time between a participant joining a world and its
- * marks being checked again (the next tick): its mark contributions stay exactly as its saved record has them,
- * so a mark that stays active never dips a contribution, and the maximum health it raises is never clamped.
- * After the check, every entity whose marks changed is reconciled once, after all marks were checked.</p>
+ * <p>Contributions follow activity, with one grace for a participant that just joined a world: for
+ * {@value #JOIN_GRACE_TICKS} server ticks, an inactive mark whose partner is not loaded keeps exactly the
+ * contributions the participant's saved record has for it (a partner loaded in another dimension or too far away
+ * withdraws at once), so a partner that loads a moment later (a neighbouring chunk, a player still logging in)
+ * never dips a contribution, and the maximum health it raises is never clamped (owner decision 2026-10-25). An
+ * active mark always gives its contributions. When the grace ends, the participant is reconciled and inactive
+ * marks withdraw. Each tick, every entity whose marks changed is reconciled once, after all marks were checked.</p>
  */
 public final class MarkStore implements MarkService, MarkContributions {
 
@@ -67,6 +70,19 @@ public final class MarkStore implements MarkService, MarkContributions {
     static final int RECHECK_TICKS = 20;
     /** Server ticks a removal that looks permanent waits for the same entity to join again. */
     static final long GONE_GRACE_TICKS = 1;
+    /** Server ticks a joining participant keeps the recorded contributions of its inactive marks. */
+    static final long JOIN_GRACE_TICKS = 40;
+
+    /** A participant in its join grace: the entity and the server tick the grace ends. */
+    private static final class Joiner {
+        final EntityLivingBase entity;
+        final long until;
+
+        Joiner(EntityLivingBase entity, long until) {
+            this.entity = entity;
+            this.until = until;
+        }
+    }
 
     private final DefinitionRegistry registry;
     private final CallbackRunner callbacks;
@@ -80,8 +96,10 @@ public final class MarkStore implements MarkService, MarkContributions {
     private boolean recheckAll;
     private final Map<UUID, Long> pendingGone = new HashMap<>();
     private final Map<EntityLivingBase, Boolean> reconcileNext = new IdentityHashMap<>();
-    /** Participants that joined a world and whose marks were not checked since; see the class comment. */
-    private final Set<UUID> unchecked = new HashSet<>();
+    /** Participants in their join grace; see the class comment. */
+    private final Map<UUID, Joiner> joining = new HashMap<>();
+    /** The last server tick seen, to date a join grace. */
+    private long lastTick;
 
     public MarkStore(DefinitionRegistry registry, CallbackRunner callbacks, ContributionManager contributions,
                      DiagnosticLog log, Warnings warnings, Consumer<String> warn) {
@@ -156,7 +174,7 @@ public final class MarkStore implements MarkService, MarkContributions {
         dirty.clear();
         pendingGone.clear();
         reconcileNext.clear();
-        unchecked.clear();
+        joining.clear();
     }
 
     @Nullable
@@ -175,8 +193,8 @@ public final class MarkStore implements MarkService, MarkContributions {
     /**
      * An entity joined a world: its marks are checked on the next tick (it is not findable yet), it is no longer
      * suspected gone, and it is reconciled then, which also drops recorded mark contributions of marks that ended
-     * while it was unloaded. Until then its mark contributions stay as recorded. Called before the join's own
-     * reconcile.
+     * while it was unloaded. During its join grace its inactive marks keep their recorded contributions. Called
+     * before the join's own reconcile.
      */
     public void onJoin(EntityLivingBase entity, EntityState state) {
         MarkRecords records = records();
@@ -191,7 +209,7 @@ public final class MarkStore implements MarkService, MarkContributions {
             dirty.add(id);
         }
         if (participant || recorded) {
-            unchecked.add(id);
+            joining.put(id, new Joiner(entity, lastTick + JOIN_GRACE_TICKS));
             reconcileNext.put(entity, Boolean.TRUE);
         }
     }
@@ -251,6 +269,7 @@ public final class MarkStore implements MarkService, MarkContributions {
 
     /** Once per server tick, after every world ticked: gone handling, activity checks, timers, then joiners. */
     public void tick(long serverTick) {
+        lastTick = serverTick;
         MarkRecords records = records();
         if (records == null) {
             return;
@@ -258,7 +277,7 @@ public final class MarkStore implements MarkService, MarkContributions {
         if (records.isEmpty() && reconcileNext.isEmpty()) {
             pendingGone.clear();
             dirty.clear();
-            unchecked.clear();
+            joining.clear();
             recheckAll = false;
             return;
         }
@@ -282,7 +301,7 @@ public final class MarkStore implements MarkService, MarkContributions {
             }
             recheckAll = false;
             dirty.clear();
-            unchecked.clear();
+            endJoinGraces(serverTick, changed);
             for (EntityLivingBase e : changed.keySet()) {
                 reconcile(e);
             }
@@ -292,6 +311,20 @@ public final class MarkStore implements MarkService, MarkContributions {
         });
         if (!records.isEmpty() && data != null) {
             data.markDirty();
+        }
+    }
+
+    /** Ends the join graces that are over; their entities are reconciled with the others this tick. */
+    private void endJoinGraces(long serverTick, Map<EntityLivingBase, Boolean> changed) {
+        if (joining.isEmpty()) {
+            return;
+        }
+        for (Iterator<Joiner> it = joining.values().iterator(); it.hasNext(); ) {
+            Joiner j = it.next();
+            if (serverTick > j.until) {
+                it.remove();
+                changed.put(j.entity, Boolean.TRUE);
+            }
         }
     }
 
@@ -342,6 +375,7 @@ public final class MarkStore implements MarkService, MarkContributions {
                 sameWorld ? s.getDistanceSq(t) : 0);
         // Inactive only because of the maximum distance: distance alone never ends a mark, so no timeout runs.
         r.distanceOnly = !now && sameWorld;
+        r.partnerMissing = s == null || t == null;
         if (now != r.active) {
             setActive(r, def, now);
             mark(changed, s);
@@ -512,8 +546,6 @@ public final class MarkStore implements MarkService, MarkContributions {
             callbacks.run(KEY_PREFIX + r.id, "applied", () -> def.onApplied().onApplied(context));
         }
         if (r.active) {
-            // A participant that joined this tick keeps only its recorded mark contributions until the end of the
-            // tick; it gets this new one then, when the tick's reconcile of joiners runs.
             reconcile(s);
             reconcile(t);
         }
@@ -698,7 +730,7 @@ public final class MarkStore implements MarkService, MarkContributions {
         }
         UUID id = entity.getUniqueID();
         Map<String, ?> recorded = null;
-        if (unchecked.contains(id)) {
+        if (joining.containsKey(id)) {
             EntityState state = entity.getCapability(EntityState.CAPABILITY, null);
             recorded = state == null ? java.util.Collections.emptyMap() : state.contributions().entries();
         }
@@ -711,12 +743,12 @@ public final class MarkStore implements MarkService, MarkContributions {
     }
 
     /**
-     * @param recorded the entity's recorded contributions while it is unchecked (keep exactly those), else null
-     *                 (follow the mark's activity)
+     * @param recorded during the entity's join grace, its recorded contributions (an inactive mark whose partner is
+     *                 not loaded keeps exactly those), else null (an inactive mark gives nothing)
      */
     private void add(MarkRecord r, MarkSide side, @Nullable Map<String, ?> recorded,
                      BiConsumer<String, Contribution> out) {
-        if (recorded == null && !r.active) {
+        if (!r.active && (recorded == null || !r.partnerMissing)) {
             return;
         }
         MarkDefinition def = definition(r);
@@ -726,7 +758,7 @@ public final class MarkStore implements MarkService, MarkContributions {
         List<Contribution> list = def.contributions(side);
         String[] keys = r.keys(side, list.size());
         for (int i = 0; i < list.size(); i++) {
-            if (recorded == null || recorded.containsKey(keys[i])) {
+            if (r.active || recorded.containsKey(keys[i])) {
                 out.accept(keys[i], list.get(i));
             }
         }
