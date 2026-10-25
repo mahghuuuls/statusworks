@@ -54,6 +54,7 @@ public final class MarkDefinition {
     @Nullable private final MarkRemovedCallback onRemoved;
     private final List<Contribution> sourceContributions;
     private final List<Contribution> targetContributions;
+    private final Presentation presentation;
 
     private MarkDefinition(Builder b) {
         this.id = b.id;
@@ -76,6 +77,7 @@ public final class MarkDefinition {
         this.onRemoved = b.onRemoved;
         this.sourceContributions = Collections.unmodifiableList(new ArrayList<>(b.sourceContributions));
         this.targetContributions = Collections.unmodifiableList(new ArrayList<>(b.targetContributions));
+        this.presentation = b.presentation;
     }
 
     public static Builder builder(String id) {
@@ -184,6 +186,11 @@ public final class MarkDefinition {
         return targetContributions;
     }
 
+    /** How the definition looks on the HUD and detail view; {@link Presentation#DEFAULT} unless set. */
+    public Presentation presentation() {
+        return presentation;
+    }
+
     /** The contributions of one side. */
     public List<Contribution> contributions(MarkSide side) {
         return side == MarkSide.SOURCE ? sourceContributions : targetContributions;
@@ -212,6 +219,7 @@ public final class MarkDefinition {
         private MarkRemovedCallback onRemoved;
         private final List<Contribution> sourceContributions = new ArrayList<>();
         private final List<Contribution> targetContributions = new ArrayList<>();
+        private Presentation presentation = Presentation.DEFAULT;
 
         private Builder(String id) {
             this.id = id;
@@ -322,6 +330,12 @@ public final class MarkDefinition {
         /** Adds a contribution to one side while the mark is active; its value form must be {@code fixed}. */
         public Builder contribute(MarkSide side, Contribution contribution) {
             (side == MarkSide.SOURCE ? sourceContributions : targetContributions).add(contribution);
+            return this;
+        }
+
+        /** How the definition looks on the players' HUD and detail view. */
+        public Builder presentation(Presentation presentation) {
+            this.presentation = presentation;
             return this;
         }
 

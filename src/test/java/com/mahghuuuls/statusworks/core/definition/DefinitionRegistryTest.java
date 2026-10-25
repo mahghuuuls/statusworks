@@ -153,6 +153,25 @@ class DefinitionRegistryTest {
     }
 
     @Test
+    void presentationIsValidated() {
+        DefinitionRegistry r = new DefinitionRegistry();
+        r.registerStatus(StatusDefinition.builder("a:ok").presentation(com.mahghuuuls.statusworks.api.definition
+                .Presentation.builder().name("Ok").iconItem("minecraft:apple", 0).decimals(2).build()).build(), "moda");
+        r.registerPool(PoolDefinition.builder("a:three").presentation(com.mahghuuuls.statusworks.api.definition
+                .Presentation.builder().decimals(3).build()).build(), "moda");
+        r.registerCooldown(com.mahghuuuls.statusworks.api.definition.CooldownDefinition.builder("a:icon")
+                .presentation(com.mahghuuuls.statusworks.api.definition.Presentation.builder()
+                        .iconItem("bad id", 0).build()).build(), "moda");
+        List<DefinitionRegistry.Error> errors = r.freeze();
+        assertNotNull(r.status("a:ok"));
+        assertEquals(2, errors.size());
+        assertEquals("bad-presentation", errors.get(0).reason);
+        assertEquals("bad-presentation", errors.get(1).reason);
+        assertTrue(r.isInvalidPool("a:three"));
+        assertTrue(r.isInvalidCooldown("a:icon"));
+    }
+
+    @Test
     void aDuplicatePoolIdKeepsTheFirst() {
         DefinitionRegistry r = new DefinitionRegistry();
         r.registerPool(PoolDefinition.builder("a:p").capacity(3).build(), "moda");

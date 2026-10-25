@@ -6,6 +6,7 @@ import com.mahghuuuls.statusworks.config.ServerConfig;
 import com.mahghuuuls.statusworks.core.definition.DefinitionRegistry;
 import com.mahghuuuls.statusworks.core.state.EntityState;
 import com.mahghuuuls.statusworks.core.state.EntityStateProvider;
+import com.mahghuuuls.statusworks.network.StatusworksNetwork;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.ai.attributes.IAttributeInstance;
@@ -21,6 +22,7 @@ import net.minecraftforge.common.util.FakePlayer;
 import net.minecraftforge.common.util.FakePlayerFactory;
 import net.minecraftforge.event.AttachCapabilitiesEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.common.SidedProxy;
 import net.minecraftforge.fml.common.event.FMLConstructionEvent;
 import net.minecraftforge.fml.common.event.FMLLoadCompleteEvent;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
@@ -48,6 +50,10 @@ import java.util.Set;
 public class StatusworksMod {
 
     public static final Logger LOGGER = LogManager.getLogger(Tags.MOD_NAME);
+
+    @SidedProxy(clientSide = "com.mahghuuuls.statusworks.ClientProxy",
+            serverSide = "com.mahghuuuls.statusworks.CommonProxy")
+    public static CommonProxy proxy;
 
     private StatusworksCore core;
 
@@ -77,6 +83,9 @@ public class StatusworksMod {
         }, EntityState::new);
         MinecraftForge.EVENT_BUS.register(core.tickDriver);
         MinecraftForge.EVENT_BUS.register(core.deathAndClone);
+        MinecraftForge.EVENT_BUS.register(core.ownEntries);
+        StatusworksNetwork.register();
+        proxy.preInit(event);
         MinecraftForge.EVENT_BUS.register(this);
         LOGGER.info("{} {} loading (strictMode={}, diagnosticLog={}, diagnosticLogLinesPerSecond={})",
                 Tags.MOD_NAME, Tags.VERSION, ServerConfig.strictMode, ServerConfig.diagnosticLog,
@@ -108,6 +117,7 @@ public class StatusworksMod {
     @Mod.EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
         checkModdedAttributes(event);
+        core.ownEntries.buildTable();
         event.registerServerCommand(new StatusworksCommand(new StatusworksCommand.Context(core.statuses,
                 core.pools, core.cooldowns, core.marks, core.registry, core.diagnosticLog, core.timings,
                 core.errorCounts, LOGGER)));

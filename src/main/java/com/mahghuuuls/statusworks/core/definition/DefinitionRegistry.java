@@ -8,6 +8,7 @@ import com.mahghuuuls.statusworks.api.definition.ExpirationMode;
 import com.mahghuuuls.statusworks.api.definition.MarkDefinition;
 import com.mahghuuuls.statusworks.api.definition.MarkSide;
 import com.mahghuuuls.statusworks.api.definition.PoolDefinition;
+import com.mahghuuuls.statusworks.api.definition.Presentation;
 import com.mahghuuuls.statusworks.api.definition.Progression;
 import com.mahghuuuls.statusworks.api.definition.StatusDefinition;
 import com.mahghuuuls.statusworks.api.definition.ValueForm;
@@ -417,6 +418,7 @@ public final class DefinitionRegistry {
             found.add(new Error(id, "bad-interval", "interval " + d.interval() + " is below 1 tick", origin));
         }
         validateContributions(d.contributions(), Kind.STATUS, id, origin, found);
+        validatePresentation(d.presentation(), id, origin, found);
         return found;
     }
 
@@ -581,6 +583,7 @@ public final class DefinitionRegistry {
                     origin));
         }
         validateContributions(d.contributions(), Kind.POOL, id, origin, found);
+        validatePresentation(d.presentation(), id, origin, found);
         return found;
     }
 
@@ -623,6 +626,7 @@ public final class DefinitionRegistry {
         for (MarkSide side : MarkSide.values()) {
             validateContributions(d.contributions(side), Kind.MARK, id, origin, found);
         }
+        validatePresentation(d.presentation(), id, origin, found);
         return found;
     }
 
@@ -640,7 +644,29 @@ public final class DefinitionRegistry {
             found.add(new Error(id, "unknown-mode", "death rule \"" + d.deathRuleText()
                     + "\" is not clear or keep", origin));
         }
+        validatePresentation(d.presentation(), id, origin, found);
         return found;
+    }
+
+    /** Checks the presentation: decimals 0 to 2, an icon id or texture without whitespace, text present. */
+    private static void validatePresentation(@Nullable Presentation p, String id, String origin, List<Error> found) {
+        if (p == null) {
+            found.add(new Error(id, "bad-presentation", "presentation is null", origin));
+            return;
+        }
+        if (p.decimals() < 0 || p.decimals() > 2) {
+            found.add(new Error(id, "bad-presentation", "decimals " + p.decimals() + " is not 0, 1, or 2", origin));
+        }
+        if (p.iconItem() != null && !ID.matcher(p.iconItem()).matches()) {
+            found.add(new Error(id, "bad-presentation", "icon item id \"" + p.iconItem() + "\" is not an id", origin));
+        }
+        if (p.iconTexture() != null && !ID.matcher(p.iconTexture()).matches()) {
+            found.add(new Error(id, "bad-presentation", "icon texture \"" + p.iconTexture() + "\" is not a resource"
+                    + " location", origin));
+        }
+        if (p.iconMeta() < 0) {
+            found.add(new Error(id, "bad-presentation", "icon metadata " + p.iconMeta() + " is below 0", origin));
+        }
     }
 
     public synchronized boolean isFrozen() {

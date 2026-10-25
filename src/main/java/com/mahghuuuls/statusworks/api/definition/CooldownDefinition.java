@@ -19,6 +19,7 @@ public final class CooldownDefinition {
     @Nullable private final DeathRule deathRule;
     private final String deathRuleText;
     @Nullable private final CooldownEndedCallback onEnded;
+    private final Presentation presentation;
 
     private CooldownDefinition(Builder b) {
         this.id = b.id;
@@ -26,6 +27,7 @@ public final class CooldownDefinition {
         this.deathRuleText = b.deathRuleText;
         this.deathRule = DeathRule.fromText(b.deathRuleText);
         this.onEnded = b.onEnded;
+        this.presentation = b.presentation;
     }
 
     public static Builder builder(String id) {
@@ -51,6 +53,11 @@ public final class CooldownDefinition {
         return deathRuleText;
     }
 
+    /** How the definition looks on the HUD and detail view; {@link Presentation#DEFAULT} unless set. */
+    public Presentation presentation() {
+        return presentation;
+    }
+
     @Nullable
     public CooldownEndedCallback onEnded() {
         return onEnded;
@@ -62,6 +69,7 @@ public final class CooldownDefinition {
         private int defaultDuration = 200;
         private String deathRuleText = DeathRule.KEEP.text();
         private CooldownEndedCallback onEnded;
+        private Presentation presentation = Presentation.DEFAULT;
 
         private Builder(String id) {
             this.id = id;
@@ -87,6 +95,12 @@ public final class CooldownDefinition {
         /** Runs when the cooldown ends, with reason {@code expired}, {@code removed}, or {@code death}. */
         public Builder onEnded(CooldownEndedCallback callback) {
             this.onEnded = callback;
+            return this;
+        }
+
+        /** How the definition looks on the players' HUD and detail view. */
+        public Builder presentation(Presentation presentation) {
+            this.presentation = presentation;
             return this;
         }
 

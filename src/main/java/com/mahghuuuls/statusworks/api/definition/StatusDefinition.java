@@ -42,6 +42,7 @@ public final class StatusDefinition {
     private final int interval;
     @Nullable private final StatusIntervalCallback onInterval;
     private final List<Contribution> contributions;
+    private final Presentation presentation;
 
     private StatusDefinition(Builder builder) {
         this.id = builder.id;
@@ -63,6 +64,7 @@ public final class StatusDefinition {
         this.interval = builder.interval;
         this.onInterval = builder.onInterval;
         this.contributions = Collections.unmodifiableList(new ArrayList<>(builder.contributions));
+        this.presentation = builder.presentation;
     }
 
     public static Builder builder(String id) {
@@ -158,6 +160,11 @@ public final class StatusDefinition {
         return onInterval;
     }
 
+    /** How the definition looks on the HUD and detail view; {@link Presentation#DEFAULT} unless set. */
+    public Presentation presentation() {
+        return presentation;
+    }
+
     /** The managed contributions, in declaration order. */
     public List<Contribution> contributions() {
         return contributions;
@@ -183,6 +190,7 @@ public final class StatusDefinition {
         private int interval;
         private StatusIntervalCallback onInterval;
         private final List<Contribution> contributions = new ArrayList<>();
+        private Presentation presentation = Presentation.DEFAULT;
 
         private Builder(String id) {
             this.id = id;
@@ -281,6 +289,12 @@ public final class StatusDefinition {
         /** Adds a managed contribution; {@code fixed} and {@code per_stack} forms apply to statuses. */
         public Builder contribute(Contribution contribution) {
             this.contributions.add(contribution);
+            return this;
+        }
+
+        /** How the definition looks on the players' HUD and detail view. */
+        public Builder presentation(Presentation presentation) {
+            this.presentation = presentation;
             return this;
         }
 

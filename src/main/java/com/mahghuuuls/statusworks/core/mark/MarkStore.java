@@ -714,6 +714,22 @@ public final class MarkStore implements MarkService, MarkContributions {
                 + " age=" + r.age + " order=" + r.order;
     }
 
+    /** Every mark the entity takes part in, either side, for its HUD; reads only, never loads anything. */
+    public List<MarkView> views(UUID entity) {
+        List<MarkView> out = new ArrayList<>();
+        MarkRecords records = records();
+        if (records == null) {
+            return out;
+        }
+        for (MarkRecord r : records.asSource(entity)) {
+            out.add(new MarkView(r.id, true, r.target, r.targetName, MarkLimits.remaining(r.age, r.endAge), r.active));
+        }
+        for (MarkRecord r : records.asTarget(entity)) {
+            out.add(new MarkView(r.id, false, r.source, r.sourceName, MarkLimits.remaining(r.age, r.endAge), r.active));
+        }
+        return out;
+    }
+
     /** Number of marks in the store, for diagnostics. */
     public int size() {
         MarkRecords records = records();

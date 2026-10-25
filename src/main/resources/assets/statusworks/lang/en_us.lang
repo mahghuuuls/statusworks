@@ -1,1 +1,13 @@
 statusworks.name=Statusworks
+statusworks.timer.shared=Timer: all stacks end together when it runs out; a new stack starts it again.
+statusworks.timer.gradual=Timer: time until the next stack is lost.
+statusworks.timer.independent=Timer: time until the next stack ends; each stack has its own time.
+statusworks.timer.none=No timer: it stays until something removes it.
+statusworks.timer.lifetime=Timer: time until this pool ends.
+statusworks.timer.cooldown=Timer: time until this can be used again.
+statusworks.timer.mark=Timer: time until this mark ends; it pauses while the mark is inactive.
+statusworks.detail.target=Target: %s
+statusworks.detail.source=Marked by: %s
+statusworks.detail.inactive=Inactive: the other one is not near or not loaded.
+statusworks.detail.nosource=No source
+statusworks.detail.group=%s: %s (%s)

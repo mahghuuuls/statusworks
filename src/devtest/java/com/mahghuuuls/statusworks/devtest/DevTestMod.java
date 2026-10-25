@@ -12,6 +12,7 @@ import com.mahghuuuls.statusworks.api.definition.Overflow;
 import com.mahghuuuls.statusworks.api.definition.Direction;
 import com.mahghuuuls.statusworks.api.definition.PoolDefinition;
 import com.mahghuuuls.statusworks.api.definition.PoolStart;
+import com.mahghuuuls.statusworks.api.definition.Presentation;
 import com.mahghuuuls.statusworks.api.definition.ExpirationMode;
 import com.mahghuuuls.statusworks.api.definition.Ownership;
 import com.mahghuuuls.statusworks.api.definition.RefreshRule;
@@ -42,12 +43,18 @@ public class DevTestMod {
 
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
-        register(logged(StatusDefinition.builder(id("shared"))).limit(5).defaultDuration(200).build());
+        register(logged(StatusDefinition.builder(id("shared"))).limit(5).defaultDuration(200)
+                .presentation(Presentation.builder().name("Shared").description("Test status: its stacks share one timer.")
+                        .iconItem("minecraft:blaze_powder", 0).priority(1).build()).build());
         register(logged(StatusDefinition.builder(id("gradual"))).limit(3).defaultDuration(100)
+                .presentation(Presentation.builder().name("Gradual").iconItem("minecraft:sugar", 0).priority(2).build())
                 .expiration(ExpirationMode.GRADUAL).build());
         register(logged(StatusDefinition.builder(id("independent"))).limit(10).defaultDuration(200)
                 .expiration(ExpirationMode.INDEPENDENT).build());
-        register(logged(StatusDefinition.builder(id("none"))).limit(3).expiration(ExpirationMode.NONE).build());
+        register(logged(StatusDefinition.builder(id("none"))).limit(3).expiration(ExpirationMode.NONE)
+                .presentation(Presentation.builder().nameKey("statusworks_devtest.hud.none")
+                        .descriptionKey("statusworks_devtest.hud.none.desc").iconItem("minecraft:dye", 4).build())
+                .build());
         register(logged(StatusDefinition.builder(id("extend"))).limit(5).defaultDuration(100)
                 .refresh(RefreshRule.EXTEND).maximumRemaining(300).build());
         register(logged(StatusDefinition.builder(id("preserve"))).limit(5).defaultDuration(100)
@@ -55,6 +62,8 @@ public class DevTestMod {
         register(logged(StatusDefinition.builder(id("noreject"))).limit(2).defaultDuration(100)
                 .refreshOnReject(false).build());
         register(logged(StatusDefinition.builder(id("persource"))).limit(3).defaultDuration(200)
+                .presentation(Presentation.builder().name("Per source").iconItem("minecraft:redstone", 0).priority(3)
+                        .build())
                 .ownership(Ownership.PER_SOURCE).build());
         register(StatusDefinition.builder(id("long")).limit(5).defaultDuration(6000).build());
         register(logged(StatusDefinition.builder(id("interval"))).limit(3).defaultDuration(60)
@@ -103,7 +112,9 @@ public class DevTestMod {
         // Pools, one per progression rule and option, each with logging callbacks.
         registerPool(loggedPool(PoolDefinition.builder(id("pfixed"))).capacity(10).start(PoolStart.FULL)
                 .fixed(Direction.DRAIN, 2).build());
-        registerPool(loggedPool(PoolDefinition.builder(id("pfill"))).capacity(10).fixed(Direction.FILL, 2).build());
+        registerPool(loggedPool(PoolDefinition.builder(id("pfill"))).capacity(10).fixed(Direction.FILL, 2)
+                .presentation(Presentation.builder().name("Filling").decimals(1)
+                        .iconTexture("minecraft:textures/items/bucket_water.png").build()).build());
         registerPool(loggedPool(PoolDefinition.builder(id("pcap"))).capacity(50)
                 .percentOfCapacity(Direction.FILL, 10).build());
         registerPool(loggedPool(PoolDefinition.builder(id("pcur"))).capacity(10).startAmount(8)
@@ -166,6 +177,7 @@ public class DevTestMod {
         }
         // Cooldowns: kept through a player's death (the default) and cleared on death.
         registerCooldown(CooldownDefinition.builder(id("ckeep")).defaultDuration(600)
+                .presentation(Presentation.builder().name("Cooldown").iconItem("minecraft:clock", 0).build())
                 .onEnded(c -> LOGGER.info("[stw-devtest] cooldown_ended {}", c)).build());
         registerCooldown(CooldownDefinition.builder(id("cclear")).defaultDuration(600).deathRule(DeathRule.CLEAR)
                 .onEnded(c -> LOGGER.info("[stw-devtest] cooldown_ended {}", c)).build());
@@ -178,6 +190,7 @@ public class DevTestMod {
         // Marks: limits and overflow, refresh rules, no duration, distance, inactive timeout, a source-side armor
         // contribution, and a mark kept through the source player's death. Every point is logged.
         registerMark(loggedMark(MarkDefinition.builder(id("mone"))).defaultDuration(600)
+                .presentation(Presentation.builder().name("Hunt").iconItem("minecraft:bow", 0).build())
                 .onInterval(100, c -> LOGGER.info("[stw-devtest] mark_interval {}", c)).build());
         registerMark(loggedMark(MarkDefinition.builder(id("mthree"))).targetLimit(3)
                 .overflow(Overflow.REPLACE_OLDEST).defaultDuration(1200).build());
@@ -201,6 +214,21 @@ public class DevTestMod {
                         ValueForm.FIXED, 4))
                 .contribute(MarkSide.TARGET, Contribution.attribute("generic.maxHealth", AttributeOperation.ADD,
                         ValueForm.FIXED, 10)).build());
+        // HUD tests: a pool of 50 with one decimal, an author-hidden status that still gives armor, a mark shown on
+        // both sides, three plain fillers.
+        registerPool(PoolDefinition.builder(id("phud")).capacity(50)
+                .presentation(Presentation.builder().name("Mana").decimals(1).iconItem("minecraft:glowstone_dust", 0)
+                        .build()).build());
+        register(logged(StatusDefinition.builder(id("secret"))).defaultDuration(6000)
+                .presentation(Presentation.builder().hidden().build())
+                .contribute(Contribution.attribute("generic.armor", AttributeOperation.ADD, ValueForm.FIXED, 1)).build());
+        registerMark(loggedMark(MarkDefinition.builder(id("mboth"))).noDuration()
+                .presentation(Presentation.builder().name("Linked").iconItem("minecraft:lead", 0).markHud(true, true)
+                        .build()).build());
+        for (String filler : new String[]{"fill1", "fill2", "fill3"}) {
+            register(StatusDefinition.builder(id(filler)).defaultDuration(6000)
+                    .presentation(Presentation.builder().priority(9).build()).build());
+        }
         if (Boolean.getBoolean("statusworks.devtest.invalid")) {
             registerMark(MarkDefinition.builder(id("badmark")).targetLimit(0).build());
             registerMark(MarkDefinition.builder(id("badmarkform")).contribute(MarkSide.TARGET,

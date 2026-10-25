@@ -1,0 +1,72 @@
+package com.mahghuuuls.statusworks.client;
+
+import net.minecraftforge.common.config.Configuration;
+
+import java.io.File;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
+
+/**
+ * The player's own display settings in {@code config/statusworks-client.cfg}: HUD on or off, corner, offset, scale,
+ * maximum entries, hidden entries by definition id, and particles on or off. Saved on the client only and never
+ * sent to the server, so they change what this player sees and nothing else. Read at start and again each time
+ * the player joins a server.
+ */
+public final class ClientSettings {
+
+    public enum Corner {
+        TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT;
+
+        boolean right() {
+            return this == TOP_RIGHT || this == BOTTOM_RIGHT;
+        }
+
+        boolean bottom() {
+            return this == BOTTOM_LEFT || this == BOTTOM_RIGHT;
+        }
+    }
+
+    private final Configuration file;
+    volatile boolean hudEnabled = true;
+    volatile Corner corner = Corner.TOP_LEFT;
+    volatile int offsetX = 4;
+    volatile int offsetY = 4;
+    volatile double scale = 1.0;
+    volatile int maxEntries = 8;
+    volatile Set<String> hidden = Collections.emptySet();
+    volatile boolean particles = true;
+
+    public ClientSettings(File path) {
+        this.file = new Configuration(path);
+    }
+
+    /** Reads the file, writing any missing setting with its default. */
+    public synchronized void load() {
+        file.load();
+        hudEnabled = file.getBoolean("enabled", "hud", true, "Draw Statusworks entries on the screen and beside the inventory.");
+        String cornerText = file.getString("corner", "hud", "top_left", "Where the entries are drawn.",
+                new String[]{"top_left", "top_right", "bottom_left", "bottom_right"});
+        try {
+            corner = Corner.valueOf(cornerText.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            corner = Corner.TOP_LEFT;
+        }
+        offsetX = file.getInt("offsetX", "hud", 4, 0, 10000, "Pixels from the left or right edge.");
+        offsetY = file.getInt("offsetY", "hud", 4, 0, 10000, "Pixels from the top or bottom edge.");
+        scale = file.getFloat("scale", "hud", 1.0f, 0.25f, 4.0f, "Size of the entries.");
+        maxEntries = file.getInt("maxEntries", "hud", 8, 1, 64, "Most entries drawn; the rest show as +N.");
+        hidden = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(file.getStringList("hiddenEntries", "hud",
+                new String[0], "Definition ids this player does not want to see. Hiding changes nothing in the game."))));
+        particles = file.getBoolean("enabled", "particles", true, "Draw Statusworks particles.");
+        if (file.hasChanged()) {
+            file.save();
+        }
+    }
+
+    public boolean particlesEnabled() {
+        return particles;
+    }
+}

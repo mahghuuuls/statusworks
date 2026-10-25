@@ -54,6 +54,7 @@ public final class PoolDefinition {
     @Nullable private final PoolTargetCallback onTargetReached;
     @Nullable private final PoolRemovedCallback onRemoved;
     private final List<Contribution> contributions;
+    private final Presentation presentation;
     private final double updateStep;
 
     private PoolDefinition(Builder b) {
@@ -79,6 +80,7 @@ public final class PoolDefinition {
         this.onTargetReached = b.onTargetReached;
         this.onRemoved = b.onRemoved;
         this.contributions = Collections.unmodifiableList(new ArrayList<>(b.contributions));
+        this.presentation = b.presentation;
         this.updateStep = b.updateStep;
     }
 
@@ -190,6 +192,11 @@ public final class PoolDefinition {
         return onRemoved;
     }
 
+    /** How the definition looks on the HUD and detail view; {@link Presentation#DEFAULT} unless set. */
+    public Presentation presentation() {
+        return presentation;
+    }
+
     /** The managed contributions, in declaration order. */
     public List<Contribution> contributions() {
         return contributions;
@@ -226,6 +233,7 @@ public final class PoolDefinition {
         private PoolTargetCallback onTargetReached;
         private PoolRemovedCallback onRemoved;
         private final List<Contribution> contributions = new ArrayList<>();
+        private Presentation presentation = Presentation.DEFAULT;
         private double updateStep = DEFAULT_UPDATE_STEP;
 
         private Builder(String id) {
@@ -359,6 +367,12 @@ public final class PoolDefinition {
         /** The contribution update step in percent of the capacity (default 1). */
         public Builder updateStep(double percentOfCapacity) {
             this.updateStep = percentOfCapacity;
+            return this;
+        }
+
+        /** How the definition looks on the players' HUD and detail view. */
+        public Builder presentation(Presentation presentation) {
+            this.presentation = presentation;
             return this;
         }
 

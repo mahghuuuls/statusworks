@@ -1,1 +1,3 @@
 statusworks_devtest.name=Statusworks Dev Test
+statusworks_devtest.hud.none=Endless (translated)
+statusworks_devtest.hud.none.desc=Test status without a timer; this text comes from a translation key.

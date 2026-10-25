@@ -23,6 +23,7 @@ import com.mahghuuuls.statusworks.core.diagnostic.Warnings;
 import com.mahghuuuls.statusworks.core.lifecycle.DeathAndClone;
 import com.mahghuuuls.statusworks.core.lifecycle.TickDriver;
 import com.mahghuuuls.statusworks.core.mark.MarkStore;
+import com.mahghuuuls.statusworks.network.OwnEntriesSender;
 import com.mahghuuuls.statusworks.core.state.CooldownOperations;
 import com.mahghuuuls.statusworks.core.state.EntityStateCodec;
 import com.mahghuuuls.statusworks.core.state.PoolOperations;
@@ -49,6 +50,7 @@ public final class StatusworksCore implements StatusworksApi.Backend {
     final CooldownOperations cooldowns;
     final ContributionManager contributions;
     final MarkStore marks;
+    final OwnEntriesSender ownEntries;
     final EntityStateCodec codec;
     final DeathAndClone deathAndClone;
     // Not final: StatusOperations reaches it through a lambda that only runs after construction.
@@ -69,9 +71,11 @@ public final class StatusworksCore implements StatusworksApi.Backend {
                 entity -> this.tickDriver.track(entity));
         this.marks = new MarkStore(registry, callbacks, contributions, diagnosticLog, warnings, logger::warn);
         contributions.setMarks(marks);
+        this.ownEntries = new OwnEntriesSender(registry, marks, diagnosticLog);
         this.codec = new EntityStateCodec(registry, (key, message) ->
                 warnings.once("load:" + key, "Statusworks: " + message));
-        this.tickDriver = new TickDriver(statuses, pools, cooldowns, marks, contributions, timings, diagnosticLog);
+        this.tickDriver = new TickDriver(statuses, pools, cooldowns, marks, ownEntries, contributions, timings,
+                diagnosticLog);
         this.deathAndClone = new DeathAndClone(statuses, pools, cooldowns, marks, contributions, codec, registry);
     }
 
