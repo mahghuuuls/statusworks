@@ -7,6 +7,8 @@ import com.mahghuuuls.statusworks.api.definition.Direction;
 import com.mahghuuuls.statusworks.api.definition.ExpirationMode;
 import com.mahghuuuls.statusworks.api.definition.MarkDefinition;
 import com.mahghuuuls.statusworks.api.definition.MarkSide;
+import com.mahghuuuls.statusworks.api.definition.ParticleAudience;
+import com.mahghuuuls.statusworks.api.definition.Particles;
 import com.mahghuuuls.statusworks.api.definition.PoolDefinition;
 import com.mahghuuuls.statusworks.api.definition.Presentation;
 import com.mahghuuuls.statusworks.api.definition.Progression;
@@ -49,6 +51,22 @@ public final class DefinitionRegistry {
                     "generic.movementSpeed", "generic.flyingSpeed", "generic.attackDamage", "generic.attackSpeed",
                     "generic.armor", "generic.armorToughness", "generic.luck", "generic.reachDistance",
                     "forge.swimSpeed", "horse.jumpStrength", "zombie.spawnReinforcements")));
+
+    /**
+     * Vanilla particle names a definition may use: every 1.12.2 particle that takes no extra arguments, except
+     * {@code take} (an item pickup animation) and {@code mobappearance} (the elder guardian's screen overlay).
+     */
+    public static final Set<String> PARTICLE_TYPES = java.util.Collections.unmodifiableSet(new HashSet<>(
+            Arrays.asList("explode", "largeexplode", "hugeexplosion", "fireworksSpark", "bubble", "splash", "wake",
+                    "suspended", "depthsuspend", "crit", "magicCrit", "smoke", "largesmoke", "spell", "instantSpell",
+                    "mobSpell", "mobSpellAmbient", "witchMagic", "dripWater", "dripLava", "angryVillager",
+                    "happyVillager", "townaura", "note", "portal", "enchantmenttable", "flame", "lava", "footstep",
+                    "cloud", "reddust", "snowballpoof", "snowshovel", "slime", "heart", "barrier", "droplet",
+                    "dragonbreath", "endRod", "damageIndicator", "sweepAttack", "totem", "spit")));
+
+    /** Particle names that take a color. */
+    public static final Set<String> COLORED_PARTICLES = java.util.Collections.unmodifiableSet(new HashSet<>(
+            Arrays.asList("reddust", "mobSpell", "mobSpellAmbient")));
 
     /** Whether a contribution type id is registered; checked when definitions freeze. */
     private final Predicate<String> knownType;
@@ -418,7 +436,7 @@ public final class DefinitionRegistry {
             found.add(new Error(id, "bad-interval", "interval " + d.interval() + " is below 1 tick", origin));
         }
         validateContributions(d.contributions(), Kind.STATUS, id, origin, found);
-        validatePresentation(d.presentation(), id, origin, found);
+        validatePresentation(d.presentation(), "status", id, origin, found);
         return found;
     }
 
@@ -583,7 +601,7 @@ public final class DefinitionRegistry {
                     origin));
         }
         validateContributions(d.contributions(), Kind.POOL, id, origin, found);
-        validatePresentation(d.presentation(), id, origin, found);
+        validatePresentation(d.presentation(), "pool", id, origin, found);
         return found;
     }
 
@@ -626,7 +644,7 @@ public final class DefinitionRegistry {
         for (MarkSide side : MarkSide.values()) {
             validateContributions(d.contributions(side), Kind.MARK, id, origin, found);
         }
-        validatePresentation(d.presentation(), id, origin, found);
+        validatePresentation(d.presentation(), "mark", id, origin, found);
         return found;
     }
 
@@ -644,12 +662,17 @@ public final class DefinitionRegistry {
             found.add(new Error(id, "unknown-mode", "death rule \"" + d.deathRuleText()
                     + "\" is not clear or keep", origin));
         }
-        validatePresentation(d.presentation(), id, origin, found);
+        validatePresentation(d.presentation(), "cooldown", id, origin, found);
         return found;
     }
 
-    /** Checks the presentation: decimals 0 to 2, an icon id or texture without whitespace, text present. */
-    private static void validatePresentation(@Nullable Presentation p, String id, String origin, List<Error> found) {
+    /**
+     * Checks the presentation: decimals 0 to 2, an icon id or texture without whitespace, text present, and
+     * particles: a known type without extra arguments, a color only on a colored type, 0 to 100 per second, a
+     * participant audience only on a mark, and none on a cooldown.
+     */
+    private static void validatePresentation(@Nullable Presentation p, String kind, String id, String origin,
+                                             List<Error> found) {
         if (p == null) {
             found.add(new Error(id, "bad-presentation", "presentation is null", origin));
             return;
@@ -666,6 +689,35 @@ public final class DefinitionRegistry {
         }
         if (p.iconMeta() < 0) {
             found.add(new Error(id, "bad-presentation", "icon metadata " + p.iconMeta() + " is below 0", origin));
+        }
+        Particles particles = p.particles();
+        if (particles == null) {
+            return;
+        }
+        if ("cooldown".equals(kind)) {
+            found.add(new Error(id, "bad-particles", "a cooldown has no particles", origin));
+            return;
+        }
+        if (particles.type() == null || !PARTICLE_TYPES.contains(particles.type())) {
+            found.add(new Error(id, "bad-particles", "particle type \"" + particles.type() + "\" is not a vanilla"
+                    + " particle without extra arguments", origin));
+        }
+        if (particles.color() != Particles.NO_COLOR) {
+            if (particles.color() < 0 || particles.color() > 0xFFFFFF) {
+                found.add(new Error(id, "bad-particles", "particle color " + particles.color() + " is not 0xRRGGBB",
+                        origin));
+            } else if (!COLORED_PARTICLES.contains(particles.type())) {
+                found.add(new Error(id, "bad-particles", "particle type \"" + particles.type() + "\" takes no color;"
+                        + " only reddust, mobSpell, and mobSpellAmbient do", origin));
+            }
+        }
+        if (!(particles.perSecond() > 0 && particles.perSecond() <= 100)) {
+            found.add(new Error(id, "bad-particles", "particles per second " + particles.perSecond()
+                    + " is not above 0 and at most 100", origin));
+        }
+        if (!"mark".equals(kind) && particles.audience() != null && particles.audience() != ParticleAudience.NEARBY) {
+            found.add(new Error(id, "bad-particles", "a " + kind + " shows particles to nearby players only; audience "
+                    + particles.audience().name().toLowerCase(java.util.Locale.ROOT) + " is for marks", origin));
         }
     }
 

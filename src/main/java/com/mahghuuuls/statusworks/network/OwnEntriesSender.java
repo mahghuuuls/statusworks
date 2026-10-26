@@ -31,6 +31,8 @@ public final class OwnEntriesSender {
     private final DiagnosticLog log;
     @Nullable private PresentationTable table;
     private final Map<UUID, EntryDiff> sent = new HashMap<>();
+    /** Told when a player's entries start over: its client drops everything it had, also other entities'. */
+    private java.util.function.Consumer<UUID> startOver = id -> { };
     private long tick;
 
     public OwnEntriesSender(DefinitionRegistry registry, MarkStore marks, DiagnosticLog log) {
@@ -39,12 +41,18 @@ public final class OwnEntriesSender {
         this.log = log;
     }
 
+    /** Sets who is told when a player's entries start over (login, respawn, dimension change, logout). */
+    public void onStartOver(java.util.function.Consumer<UUID> listener) {
+        this.startOver = listener;
+    }
+
     /** Builds the table from the definitions as they are after the server-start checks. */
     public void buildTable() {
         table = PresentationTable.build(registry);
     }
 
-    private PresentationTable table() {
+    /** The presentation table, shared with the audience sender. */
+    PresentationTable table() {
         if (table == null) {
             buildTable();
         }
@@ -79,6 +87,7 @@ public final class OwnEntriesSender {
     @SubscribeEvent
     public void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         sent.remove(event.player.getUniqueID());
+        startOver.accept(event.player.getUniqueID());
     }
 
     /** At the end of each server tick: one message per player whose entries changed. */
@@ -101,6 +110,8 @@ public final class OwnEntriesSender {
     private void snapshot(EntityPlayerMP player) {
         EntryDiff diff = new EntryDiff();
         sent.put(player.getUniqueID(), diff);
+        // The client drops other entities' entries with an own snapshot; they are sent again from the next tick.
+        startOver.accept(player.getUniqueID());
         send(player, diff, true);
     }
 

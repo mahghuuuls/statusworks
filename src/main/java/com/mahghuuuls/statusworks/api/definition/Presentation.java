@@ -9,7 +9,7 @@ import javax.annotation.Nullable;
  *
  * <p>Build one with {@link #builder()} and give it to a definition builder's {@code presentation(...)}. A
  * definition without one uses {@link #DEFAULT}: shown, named by its id's path, the generic icon, every field, 0
- * decimals, priority 0, and for a mark the source's HUD only.</p>
+ * decimals, priority 0, for a mark the source's HUD only, and no particles.</p>
  */
 public final class Presentation {
 
@@ -31,6 +31,7 @@ public final class Presentation {
     private final int priority;
     private final boolean markOnSource;
     private final boolean markOnTarget;
+    @Nullable private final Particles particles;
 
     private Presentation(Builder b) {
         this.hidden = b.hidden;
@@ -48,6 +49,7 @@ public final class Presentation {
         this.priority = b.priority;
         this.markOnSource = b.markOnSource;
         this.markOnTarget = b.markOnTarget;
+        this.particles = b.particles;
     }
 
     public static Builder builder() {
@@ -130,6 +132,12 @@ public final class Presentation {
         return markOnTarget;
     }
 
+    /** The particles, or null for none. A hidden definition shows no particles either: nothing about it is sent. */
+    @Nullable
+    public Particles particles() {
+        return particles;
+    }
+
     public static final class Builder {
         private boolean hidden;
         private String name;
@@ -146,6 +154,7 @@ public final class Presentation {
         private int priority;
         private boolean markOnSource = true;
         private boolean markOnTarget;
+        private Particles particles;
 
         private Builder() {
         }
@@ -226,6 +235,12 @@ public final class Presentation {
         public Builder markHud(boolean onSource, boolean onTarget) {
             this.markOnSource = onSource;
             this.markOnTarget = onTarget;
+            return this;
+        }
+
+        /** Particles on the entity that has the instance (for a mark, its target); none unless set. */
+        public Builder particles(Particles particles) {
+            this.particles = particles;
             return this;
         }
 

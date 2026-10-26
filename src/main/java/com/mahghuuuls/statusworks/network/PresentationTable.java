@@ -2,6 +2,8 @@ package com.mahghuuuls.statusworks.network;
 
 import com.mahghuuuls.statusworks.api.definition.CooldownDefinition;
 import com.mahghuuuls.statusworks.api.definition.MarkDefinition;
+import com.mahghuuuls.statusworks.api.definition.ParticleAudience;
+import com.mahghuuuls.statusworks.api.definition.Particles;
 import com.mahghuuuls.statusworks.api.definition.PoolDefinition;
 import com.mahghuuuls.statusworks.api.definition.Presentation;
 import com.mahghuuuls.statusworks.api.definition.StatusDefinition;
@@ -17,8 +19,8 @@ import java.util.Map;
 /**
  * The presentation table of the server's valid definitions: one row per definition a player may see, in
  * registration order (statuses, pools, marks, cooldowns). The one place that decides what a client may know about a
- * definition: an author-hidden definition, and a mark shown on neither side, get no row, so none of their entries
- * can be built or sent.
+ * definition: an author-hidden definition, and a mark shown on neither side and without particles, get no row, so
+ * none of their entries can be built or sent. It also keeps, on the server only, who sees each row's particles.
  */
 public final class PresentationTable {
 
@@ -28,6 +30,7 @@ public final class PresentationTable {
     private final Map<String, HudDefinition> marks = new HashMap<>();
     private final Map<String, HudDefinition> cooldowns = new HashMap<>();
     private final Map<String, Presentation> markPresentations = new HashMap<>();
+    private final Map<Integer, ParticleAudience> audiences = new HashMap<>();
 
     public static PresentationTable build(DefinitionRegistry registry) {
         PresentationTable t = new PresentationTable();
@@ -42,7 +45,7 @@ public final class PresentationTable {
         for (DefinitionRegistry.MarkEntry e : registry.marks()) {
             MarkDefinition d = e.definition();
             Presentation p = d.presentation();
-            if (p.markOnSource() || p.markOnTarget()) {
+            if (p.markOnSource() || p.markOnTarget() || p.particles() != null) {
                 t.add(t.marks, d.id(), HudDefinition.MARK, p, 1, "mark");
                 t.markPresentations.put(d.id(), p);
             }
@@ -61,11 +64,21 @@ public final class PresentationTable {
         }
         // Without a name, the id's path: "hp10" rather than "mymod:hp10".
         String name = p.name() != null ? p.name() : id.substring(id.indexOf(':') + 1);
+        Particles particles = kind == HudDefinition.COOLDOWN ? null : p.particles();
         HudDefinition row = new HudDefinition(rows.size(), id, kind, name, p.name() != null && p.nameIsKey(),
                 p.description(), p.descriptionIsKey(), p.iconItem(), p.iconMeta(), p.iconTexture(), p.showCount(),
-                p.showAmount(), p.showTime(), p.decimals(), p.priority(), limit, timerMode);
+                p.showAmount(), p.showTime(), p.decimals(), p.priority(), limit, timerMode,
+                particles == null ? null : particles.type(), particles == null ? -1 : particles.color(),
+                particles == null ? 0 : (float) particles.perSecond(), particles != null && particles.longDistance());
         rows.add(row);
         byId.put(id, row);
+        if (particles != null) {
+            ParticleAudience audience = particles.audience();
+            if (audience == null || kind != HudDefinition.MARK) {
+                audience = kind == HudDefinition.MARK ? ParticleAudience.SOURCE : ParticleAudience.NEARBY;
+            }
+            audiences.put(row.index, audience);
+        }
     }
 
     public List<HudDefinition> rows() {
@@ -95,6 +108,24 @@ public final class PresentationTable {
             return null;
         }
         return marks.get(id);
+    }
+
+    /** The row of a mark whose particles show, or null when the definition has no row or no particles. */
+    @Nullable
+    HudDefinition markParticles(String id) {
+        HudDefinition row = marks.get(id);
+        return row != null && row.particleType != null ? row : null;
+    }
+
+    /** Who sees a row's particles; null for a row without particles. */
+    @Nullable
+    ParticleAudience audience(int index) {
+        return audiences.get(index);
+    }
+
+    /** Whether any row has particles; without any, nothing is ever sent to an audience. */
+    boolean hasParticles() {
+        return !audiences.isEmpty();
     }
 
     @Nullable

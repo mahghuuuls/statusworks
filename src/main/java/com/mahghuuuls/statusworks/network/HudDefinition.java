@@ -6,8 +6,9 @@ import net.minecraftforge.fml.common.network.ByteBufUtils;
 import javax.annotation.Nullable;
 
 /**
- * One row of the presentation table: what a client needs to draw the entries of one visible definition. Rows of
- * author-hidden definitions are never built, so they never reach a client.
+ * One row of the presentation table: what a client needs to draw the entries of one visible definition, including
+ * its particles. Rows of author-hidden definitions are never built, so they never reach a client. Who sees the
+ * particles is the server's decision and is not in the row.
  */
 public final class HudDefinition {
 
@@ -36,11 +37,27 @@ public final class HudDefinition {
     public final int limit;
     /** What the timer means: an expiration mode for a status, or {@code lifetime}, {@code cooldown}, {@code mark}. */
     public final String timerMode;
+    /** The particle type, or null for no particles. */
+    @Nullable public final String particleType;
+    /** The particle color as {@code 0xRRGGBB}, or -1 for the type's own. */
+    public final int particleColor;
+    public final float particlesPerSecond;
+    /** Whether the particles show beyond 32 blocks, as far as the client has the entity. */
+    public final boolean particlesFar;
 
     public HudDefinition(int index, String id, byte kind, String name, boolean nameIsKey, @Nullable String description,
                          boolean descriptionIsKey, @Nullable String iconItem, int iconMeta,
                          @Nullable String iconTexture, boolean showCount, boolean showAmount, boolean showTime,
                          int decimals, int priority, int limit, String timerMode) {
+        this(index, id, kind, name, nameIsKey, description, descriptionIsKey, iconItem, iconMeta, iconTexture,
+                showCount, showAmount, showTime, decimals, priority, limit, timerMode, null, -1, 0, false);
+    }
+
+    public HudDefinition(int index, String id, byte kind, String name, boolean nameIsKey, @Nullable String description,
+                         boolean descriptionIsKey, @Nullable String iconItem, int iconMeta,
+                         @Nullable String iconTexture, boolean showCount, boolean showAmount, boolean showTime,
+                         int decimals, int priority, int limit, String timerMode, @Nullable String particleType,
+                         int particleColor, float particlesPerSecond, boolean particlesFar) {
         this.index = index;
         this.id = id;
         this.kind = kind;
@@ -58,6 +75,10 @@ public final class HudDefinition {
         this.priority = priority;
         this.limit = limit;
         this.timerMode = timerMode;
+        this.particleType = particleType;
+        this.particleColor = particleColor;
+        this.particlesPerSecond = particlesPerSecond;
+        this.particlesFar = particlesFar;
     }
 
     void write(ByteBuf buf) {
@@ -76,6 +97,12 @@ public final class HudDefinition {
         buf.writeInt(priority);
         ByteBufUtils.writeVarInt(buf, limit, 5);
         ByteBufUtils.writeUTF8String(buf, timerMode);
+        writeOptional(buf, particleType);
+        if (particleType != null) {
+            buf.writeInt(particleColor);
+            buf.writeFloat(particlesPerSecond);
+            buf.writeBoolean(particlesFar);
+        }
     }
 
     static HudDefinition read(ByteBuf buf) {
@@ -94,9 +121,18 @@ public final class HudDefinition {
         int priority = buf.readInt();
         int limit = ByteBufUtils.readVarInt(buf, 5);
         String timerMode = ByteBufUtils.readUTF8String(buf);
+        String particleType = readOptional(buf);
+        int particleColor = -1;
+        float particlesPerSecond = 0;
+        boolean particlesFar = false;
+        if (particleType != null) {
+            particleColor = buf.readInt();
+            particlesPerSecond = buf.readFloat();
+            particlesFar = buf.readBoolean();
+        }
         return new HudDefinition(index, id, kind, name, nameIsKey, description, descriptionIsKey, iconItem, iconMeta,
                 iconTexture, (flags & 1) != 0, (flags & 2) != 0, (flags & 4) != 0, decimals, priority, limit,
-                timerMode);
+                timerMode, particleType, particleColor, particlesPerSecond, particlesFar);
     }
 
     static void writeOptional(ByteBuf buf, @Nullable String text) {

@@ -9,6 +9,8 @@ import com.mahghuuuls.statusworks.api.definition.DeathRule;
 import com.mahghuuuls.statusworks.api.definition.MarkDefinition;
 import com.mahghuuuls.statusworks.api.definition.MarkSide;
 import com.mahghuuuls.statusworks.api.definition.Overflow;
+import com.mahghuuuls.statusworks.api.definition.ParticleAudience;
+import com.mahghuuuls.statusworks.api.definition.Particles;
 import com.mahghuuuls.statusworks.api.definition.Direction;
 import com.mahghuuuls.statusworks.api.definition.PoolDefinition;
 import com.mahghuuuls.statusworks.api.definition.PoolStart;
@@ -229,6 +231,41 @@ public class DevTestMod {
             register(StatusDefinition.builder(id(filler)).defaultDuration(6000)
                     .presentation(Presentation.builder().priority(9).build()).build());
         }
+        // Particle tests: red spell particles at 4 per second within 32 blocks; green dust with long distance; a
+        // pool with happy-villager particles; a mark's yellow particles for its source only; hearts for a mark's
+        // target only; an author-hidden status with flames, which must never reach a client.
+        register(logged(StatusDefinition.builder(id("pspark"))).defaultDuration(6000)
+                .presentation(Presentation.builder().name("Sparks").iconItem("minecraft:redstone_torch", 0)
+                        .particles(Particles.builder("mobSpell").color(255, 0, 0).perSecond(4).build()).build())
+                .build());
+        register(logged(StatusDefinition.builder(id("pfar"))).defaultDuration(6000)
+                .presentation(Presentation.builder().name("Far glow").iconItem("minecraft:emerald", 0)
+                        .particles(Particles.builder("reddust").color(0x00FF00).perSecond(8).longDistance().build())
+                        .build()).build());
+        registerPool(PoolDefinition.builder(id("pmist")).capacity(10)
+                .presentation(Presentation.builder().name("Mist").iconItem("minecraft:slime_ball", 0)
+                        .particles(Particles.builder("happyVillager").perSecond(2).build()).build()).build());
+        registerMark(loggedMark(MarkDefinition.builder(id("pmark"))).defaultDuration(2400)
+                .presentation(Presentation.builder().name("Tagged").iconItem("minecraft:gold_nugget", 0)
+                        .particles(Particles.builder("mobSpellAmbient").color(255, 255, 0).perSecond(4).build())
+                        .build()).build());
+        registerMark(loggedMark(MarkDefinition.builder(id("pmarkt"))).defaultDuration(2400)
+                .presentation(Presentation.builder().name("Loved").iconItem("minecraft:poppy", 0)
+                        .particles(Particles.builder("heart").perSecond(2).audience(ParticleAudience.TARGET).build())
+                        .build()).build());
+        // For the 32-block edge: the same red particles, 20 per second, so they are easy to see at 30 blocks. And a
+        // mark that turns inactive beyond 8 blocks, with yellow particles for its source.
+        register(logged(StatusDefinition.builder(id("pedge"))).defaultDuration(12000)
+                .presentation(Presentation.builder().name("Edge").iconItem("minecraft:redstone_torch", 0)
+                        .particles(Particles.builder("mobSpell").color(255, 0, 0).perSecond(20).build()).build())
+                .build());
+        registerMark(loggedMark(MarkDefinition.builder(id("pmarkd"))).noDuration().maximumDistance(8)
+                .presentation(Presentation.builder().name("Close").iconItem("minecraft:string", 0)
+                        .particles(Particles.builder("mobSpellAmbient").color(255, 255, 0).perSecond(8).build())
+                        .build()).build());
+        register(logged(StatusDefinition.builder(id("psecret"))).defaultDuration(6000)
+                .presentation(Presentation.builder().hidden().particles(Particles.builder("flame").build()).build())
+                .build());
         if (Boolean.getBoolean("statusworks.devtest.invalid")) {
             registerMark(MarkDefinition.builder(id("badmark")).targetLimit(0).build());
             registerMark(MarkDefinition.builder(id("badmarkform")).contribute(MarkSide.TARGET,
@@ -236,6 +273,7 @@ public class DevTestMod {
         }
         if (event.getSide().isClient()) {
             MinecraftForge.EVENT_BUS.register(new DevTestClientCheck());
+            MinecraftForge.EVENT_BUS.register(new DevTestClientView());
         }
     }
 

@@ -12,4 +12,10 @@ public interface ClientReceiver {
     void onTable(List<HudDefinition> table);
 
     void onEntries(boolean snapshot, List<HudEntry> changed, List<String> removed);
+
+    /** Entries of an entity the player may see because they have particles. */
+    void onAudience(int entity, boolean snapshot, List<HudEntry> changed, List<String> removed);
+
+    /** The player sees nothing on the entity any more. */
+    void onAudienceRemove(int entity);
 }

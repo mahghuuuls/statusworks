@@ -730,6 +730,44 @@ public final class MarkStore implements MarkService, MarkContributions {
         return out;
     }
 
+    /** One active mark whose particles show, with its loaded target, which draws them. */
+    public static final class ParticleLink {
+        public final String id;
+        public final UUID source;
+        public final EntityLivingBase target;
+        /** Remaining active ticks, or -1 for a mark without a duration. */
+        public final int remaining;
+
+        ParticleLink(String id, UUID source, EntityLivingBase target, int remaining) {
+            this.id = id;
+            this.source = source;
+            this.target = target;
+            this.remaining = remaining;
+        }
+    }
+
+    /**
+     * Every active mark of the definitions that have particles, whose target is loaded; reads only, never loads
+     * anything. An inactive mark shows no particles.
+     */
+    public List<ParticleLink> particleLinks(java.util.function.Predicate<String> withParticles) {
+        List<ParticleLink> out = new ArrayList<>();
+        MarkRecords records = records();
+        if (records == null) {
+            return out;
+        }
+        for (MarkRecord r : records.all()) {
+            if (!r.active || !withParticles.test(r.id)) {
+                continue;
+            }
+            EntityLivingBase target = loaded(r.targetEntity, r.target);
+            if (target != null) {
+                out.add(new ParticleLink(r.id, r.source, target, MarkLimits.remaining(r.age, r.endAge)));
+            }
+        }
+        return out;
+    }
+
     /** Number of marks in the store, for diagnostics. */
     public int size() {
         MarkRecords records = records();

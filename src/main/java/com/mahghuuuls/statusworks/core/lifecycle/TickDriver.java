@@ -4,6 +4,7 @@ import com.mahghuuuls.statusworks.core.contribution.ContributionManager;
 import com.mahghuuuls.statusworks.core.diagnostic.DiagnosticLog;
 import com.mahghuuuls.statusworks.core.diagnostic.Timings;
 import com.mahghuuuls.statusworks.core.mark.MarkStore;
+import com.mahghuuuls.statusworks.network.AudienceSender;
 import com.mahghuuuls.statusworks.network.OwnEntriesSender;
 import com.mahghuuuls.statusworks.core.state.CooldownOperations;
 import com.mahghuuuls.statusworks.core.state.EntityState;
@@ -45,18 +46,20 @@ public final class TickDriver {
     private final CooldownOperations cooldowns;
     private final MarkStore marks;
     private final OwnEntriesSender ownEntries;
+    private final AudienceSender audience;
     private final ContributionManager contributions;
     private final Timings timings;
     private final DiagnosticLog diagnosticLog;
 
     public TickDriver(StatusOperations statuses, PoolOperations pools, CooldownOperations cooldowns,
-                      MarkStore marks, OwnEntriesSender ownEntries, ContributionManager contributions,
-                      Timings timings, DiagnosticLog diagnosticLog) {
+                      MarkStore marks, OwnEntriesSender ownEntries, AudienceSender audience,
+                      ContributionManager contributions, Timings timings, DiagnosticLog diagnosticLog) {
         this.statuses = statuses;
         this.pools = pools;
         this.cooldowns = cooldowns;
         this.marks = marks;
         this.ownEntries = ownEntries;
+        this.audience = audience;
         this.contributions = contributions;
         this.timings = timings;
         this.diagnosticLog = diagnosticLog;
@@ -133,6 +136,8 @@ public final class TickDriver {
             marks.tick(serverTicks);
             // Each player's changed entries go out once, after every change of the tick.
             ownEntries.tick(serverTicks);
+            // Then the entries of entities with particles, to the players that may see them.
+            audience.tick(serverTicks);
             timings.add(System.nanoTime() - start);
             timings.endTick();
             diagnosticLog.tick();

@@ -23,6 +23,8 @@ public final class StatusworksNetwork {
         channel = NetworkRegistry.INSTANCE.newSimpleChannel(CHANNEL_NAME);
         channel.registerMessage(TableMessage.Handler.class, TableMessage.class, 0, Side.CLIENT);
         channel.registerMessage(EntriesMessage.Handler.class, EntriesMessage.class, 1, Side.CLIENT);
+        channel.registerMessage(AudienceEntriesMessage.Handler.class, AudienceEntriesMessage.class, 2, Side.CLIENT);
+        channel.registerMessage(AudienceRemoveMessage.Handler.class, AudienceRemoveMessage.class, 3, Side.CLIENT);
     }
 
     /** Called by the physical client at start. */

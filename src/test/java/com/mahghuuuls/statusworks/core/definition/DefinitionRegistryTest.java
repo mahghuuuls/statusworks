@@ -171,6 +171,62 @@ class DefinitionRegistryTest {
         assertTrue(r.isInvalidCooldown("a:icon"));
     }
 
+    private static com.mahghuuuls.statusworks.api.definition.Presentation withParticles(
+            com.mahghuuuls.statusworks.api.definition.Particles particles) {
+        return com.mahghuuuls.statusworks.api.definition.Presentation.builder().particles(particles).build();
+    }
+
+    @Test
+    void particlesAreValidated() {
+        DefinitionRegistry r = new DefinitionRegistry();
+        r.registerStatus(StatusDefinition.builder("a:red").presentation(withParticles(com.mahghuuuls.statusworks.api
+                .definition.Particles.builder("mobSpell").color(0xFF0000).perSecond(4).build())).build(), "moda");
+        r.registerMark(com.mahghuuuls.statusworks.api.definition.MarkDefinition.builder("a:both")
+                .presentation(withParticles(com.mahghuuuls.statusworks.api.definition.Particles.builder("heart")
+                        .audience(com.mahghuuuls.statusworks.api.definition.ParticleAudience.BOTH).build())).build(),
+                "moda");
+        r.registerStatus(StatusDefinition.builder("a:unknown").presentation(withParticles(com.mahghuuuls.statusworks
+                .api.definition.Particles.builder("sparkles").build())).build(), "moda");
+        r.registerStatus(StatusDefinition.builder("a:block").presentation(withParticles(com.mahghuuuls.statusworks
+                .api.definition.Particles.builder("blockcrack").build())).build(), "moda");
+        r.registerStatus(StatusDefinition.builder("a:tinted").presentation(withParticles(com.mahghuuuls.statusworks
+                .api.definition.Particles.builder("flame").color(0xFF0000).build())).build(), "moda");
+        r.registerPool(PoolDefinition.builder("a:still").presentation(withParticles(com.mahghuuuls.statusworks.api
+                .definition.Particles.builder("flame").perSecond(0).build())).build(), "moda");
+        r.registerStatus(StatusDefinition.builder("a:source").presentation(withParticles(com.mahghuuuls.statusworks
+                .api.definition.Particles.builder("flame").audience(com.mahghuuuls.statusworks.api.definition
+                        .ParticleAudience.SOURCE).build())).build(), "moda");
+        r.registerCooldown(com.mahghuuuls.statusworks.api.definition.CooldownDefinition.builder("a:cool")
+                .presentation(withParticles(com.mahghuuuls.statusworks.api.definition.Particles.builder("flame")
+                        .build())).build(), "moda");
+        List<DefinitionRegistry.Error> errors = r.freeze();
+        assertNotNull(r.status("a:red"));
+        assertNotNull(r.mark("a:both"));
+        assertEquals(6, errors.size());
+        for (DefinitionRegistry.Error e : errors) {
+            assertEquals("bad-particles", e.reason, e.message);
+        }
+        assertTrue(r.isInvalid("a:unknown"));
+        assertTrue(r.isInvalid("a:block"), "a particle that needs a block argument");
+        assertTrue(r.isInvalid("a:tinted"), "flame takes no color");
+        assertTrue(r.isInvalidPool("a:still"));
+        assertTrue(r.isInvalid("a:source"), "a status has no source audience");
+        assertTrue(r.isInvalidCooldown("a:cool"));
+    }
+
+    @Test
+    void theParticleListIsEveryVanillaParticleWithoutArgumentsExceptTwo() {
+        java.util.Set<String> expected = new java.util.HashSet<>();
+        for (net.minecraft.util.EnumParticleTypes t : net.minecraft.util.EnumParticleTypes.values()) {
+            if (t.getArgumentCount() == 0) {
+                expected.add(t.getParticleName());
+            }
+        }
+        expected.remove("take");
+        expected.remove("mobappearance");
+        assertEquals(expected, DefinitionRegistry.PARTICLE_TYPES);
+    }
+
     @Test
     void aDuplicatePoolIdKeepsTheFirst() {
         DefinitionRegistry r = new DefinitionRegistry();

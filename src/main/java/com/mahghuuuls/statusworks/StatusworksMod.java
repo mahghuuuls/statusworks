@@ -84,6 +84,7 @@ public class StatusworksMod {
         MinecraftForge.EVENT_BUS.register(core.tickDriver);
         MinecraftForge.EVENT_BUS.register(core.deathAndClone);
         MinecraftForge.EVENT_BUS.register(core.ownEntries);
+        MinecraftForge.EVENT_BUS.register(core.audience);
         StatusworksNetwork.register();
         proxy.preInit(event);
         MinecraftForge.EVENT_BUS.register(this);
