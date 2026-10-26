@@ -4,6 +4,7 @@ import com.mahghuuuls.statusworks.network.ClientReceiver;
 import com.mahghuuuls.statusworks.network.HudDefinition;
 import com.mahghuuuls.statusworks.network.HudEntry;
 import net.minecraft.client.Minecraft;
+import net.minecraft.potion.PotionEffect;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.network.FMLNetworkEvent;
@@ -42,12 +43,20 @@ public final class ClientStore implements ClientReceiver {
         final HudEntry entry;
         final int remaining;
         final List<Integer> groupRemaining;
+        /** For one of the player's own potion effects: the effect, for its icon and level; otherwise null. */
+        @Nullable final PotionEffect potion;
 
         Shown(HudDefinition row, HudEntry entry, int remaining, List<Integer> groupRemaining) {
+            this(row, entry, remaining, groupRemaining, null);
+        }
+
+        Shown(HudDefinition row, HudEntry entry, int remaining, List<Integer> groupRemaining,
+              @Nullable PotionEffect potion) {
             this.row = row;
             this.entry = entry;
             this.remaining = remaining;
             this.groupRemaining = groupRemaining;
+            this.potion = potion;
         }
     }
 

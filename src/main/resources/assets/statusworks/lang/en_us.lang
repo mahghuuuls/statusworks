@@ -6,6 +6,7 @@ statusworks.timer.none=No timer: it stays until something removes it.
 statusworks.timer.lifetime=Timer: time until this pool ends.
 statusworks.timer.cooldown=Timer: time until this can be used again.
 statusworks.timer.mark=Timer: time until this mark ends; it pauses while the mark is inactive.
+statusworks.timer.potion=Timer: time until this potion effect ends.
 statusworks.detail.target=Target: %s
 statusworks.detail.source=Marked by: %s
 statusworks.detail.inactive=Inactive: the other one is not near or not loaded.

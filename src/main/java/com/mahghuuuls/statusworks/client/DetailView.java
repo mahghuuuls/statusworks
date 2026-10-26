@@ -87,7 +87,7 @@ public final class DetailView {
     private static List<String> names(List<ClientStore.Shown> rest) {
         List<String> lines = new ArrayList<>(rest.size());
         for (ClientStore.Shown s : rest) {
-            lines.add(EntryRows.name(s.row));
+            lines.add(EntryRows.title(s));
         }
         return lines;
     }
@@ -95,7 +95,7 @@ public final class DetailView {
     private static List<String> tooltip(ClientStore.Shown s) {
         HudDefinition row = s.row;
         List<String> lines = new ArrayList<>();
-        lines.add(EntryRows.name(row));
+        lines.add(EntryRows.title(s));
         if (row.description != null) {
             lines.add("§7" + (row.descriptionIsKey ? I18n.format(row.description) : row.description));
         }

@@ -11,8 +11,9 @@ import java.util.Set;
 
 /**
  * The player's own display settings in {@code config/statusworks-client.cfg}: HUD on or off, corner, offset, scale,
- * maximum entries, hidden entries by definition id, the icon grid (icons per row, small-text size, short times) or a
- * list with names, and particles on or off. Saved on the client only and never
+ * maximum entries, hidden entries by definition id (or a potion effect's registry id), the icon grid (icons per row,
+ * small-text size, short times) or a list with names, the player's potion effects on the HUD, and particles on or
+ * off. Saved on the client only and never
  * sent to the server, so they change what this player sees and nothing else. Read at start and again each time
  * the player joins a server.
  */
@@ -43,6 +44,7 @@ public final class ClientSettings {
     volatile double textScale = 0.75;
     volatile int iconsPerRow = 10;
     volatile boolean shortTime = true;
+    volatile boolean potionEffects = false;
 
     public ClientSettings(File path) {
         this.file = new Configuration(path);
@@ -69,8 +71,11 @@ public final class ClientSettings {
         iconsPerRow = file.getInt("iconsPerRow", "hud", 10, 1, 32, "Icons in one row of the grid.");
         shortTime = file.getBoolean("shortTime", "hud", true, "In the grid, show times as 45s, 2m, 1h instead of"
                 + " 45 and 1:05.");
+        potionEffects = file.getBoolean("potionEffects", "hud", false, "Also show your own potion effects on this"
+                + " HUD, after the Statusworks entries, and hide vanilla's potion icons at the top right.");
         hidden = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(file.getStringList("hiddenEntries", "hud",
-                new String[0], "Definition ids this player does not want to see. Hiding changes nothing in the game."))));
+                new String[0], "Definition ids, or potion effect ids such as minecraft:speed, this player does not want"
+                + " to see. Hiding changes nothing in the game."))));
         particles = file.getBoolean("enabled", "particles", true, "Draw Statusworks particles.");
         if (file.hasChanged()) {
             file.save();

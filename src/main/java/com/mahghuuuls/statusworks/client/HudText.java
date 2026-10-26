@@ -69,9 +69,18 @@ public final class HudText {
         return String.format(Locale.ROOT, "%." + Math.max(0, Math.min(2, decimals)) + "f", value);
     }
 
-    /** The count shows for a status whose limit is above 1, unless the author hid it. */
+    /**
+     * The count shows for a status whose limit is above 1, unless the author hid it, and as the level of a potion
+     * effect (above level I only).
+     */
     public static boolean showsCount(HudDefinition row) {
-        return row.kind == HudDefinition.STATUS && row.limit > 1 && row.showCount;
+        return (row.kind == HudDefinition.STATUS && row.limit > 1 || row.kind == HudDefinition.POTION)
+                && row.showCount;
+    }
+
+    /** Whether this entry's count shows: a status above limit 1, or a potion effect above level I. */
+    private static boolean showsCount(HudDefinition row, HudEntry entry) {
+        return showsCount(row) && (row.kind != HudDefinition.POTION || entry.count > 1);
     }
 
     /** The remaining time the client shows now: the server's value counted down while the entry is active. */
@@ -85,7 +94,7 @@ public final class HudText {
     /** The parts of an entry's line after its name, in order: count, amount, other participant, time. */
     public static List<String> fields(HudDefinition row, HudEntry entry, int remaining) {
         List<String> parts = new ArrayList<>(4);
-        if (showsCount(row)) {
+        if (showsCount(row, entry)) {
             parts.add(Integer.toString(entry.count));
         }
         if (row.kind == HudDefinition.POOL && row.showAmount) {
@@ -102,7 +111,7 @@ public final class HudText {
 
     /** The count on an icon's corner in the grid, or "" when it does not show. */
     public static String corner(HudDefinition row, HudEntry entry) {
-        return showsCount(row) ? Integer.toString(entry.count) : "";
+        return showsCount(row, entry) ? Integer.toString(entry.count) : "";
     }
 
     /**

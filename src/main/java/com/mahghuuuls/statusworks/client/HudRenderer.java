@@ -18,7 +18,8 @@ import java.util.List;
  * which keeps clear of the vanilla potion icons at the top right, with a fill bar under a pool's icon, the time
  * under each icon (short form by default), and the stack count on the icon's corner; or, when the player turns
  * names on, a list of rows with names. The corner, offset, scale, maximum, icons per row, and text size come from
- * the client settings; entries over the maximum show as {@code +N}.
+ * the client settings; entries over the maximum show as {@code +N}. With the potion setting on, the player's own
+ * potion effects follow the Statusworks entries, and vanilla's potion icons at the top right are not drawn.
  *
  * <p>With the inventory open, the inventory view draws the same layout at full brightness and explains the entry
  * under the pointer, so the overlay skips its own, darkened copy.</p>
@@ -53,11 +54,22 @@ public final class HudRenderer {
 
     private final ClientStore store;
     private final ClientSettings settings;
+    private final PotionEntries potions;
     private final EntryRows rows = new EntryRows();
 
     HudRenderer(ClientStore store, ClientSettings settings) {
         this.store = store;
         this.settings = settings;
+        this.potions = new PotionEntries(settings);
+    }
+
+    /** With the player's potion effects on this HUD, vanilla's own icons at the top right are not drawn. */
+    @SubscribeEvent
+    public void onOverlayPre(RenderGameOverlayEvent.Pre event) {
+        if (event.getType() == RenderGameOverlayEvent.ElementType.POTION_ICONS && settings.hudEnabled
+                && settings.potionEffects && hudVisible(Minecraft.getMinecraft())) {
+            event.setCanceled(true);
+        }
     }
 
     /** Whether the HUD is drawn at all: not with the GUI hidden (F1) or the debug screen (F3) on. */
@@ -86,6 +98,7 @@ public final class HudRenderer {
             return hits;
         }
         List<ClientStore.Shown> all = store.shown();
+        all.addAll(potions.shown(mc));
         if (all.isEmpty()) {
             return hits;
         }

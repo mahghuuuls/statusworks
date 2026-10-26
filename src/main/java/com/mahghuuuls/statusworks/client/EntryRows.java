@@ -3,11 +3,14 @@ package com.mahghuuuls.statusworks.client;
 import com.mahghuuuls.statusworks.network.HudDefinition;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
+import net.minecraft.client.gui.inventory.GuiContainer;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.potion.Potion;
+import net.minecraft.potion.PotionEffect;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
 
@@ -37,6 +40,16 @@ final class EntryRows {
     /** The name, translated when the author gave a key. */
     static String name(HudDefinition row) {
         return row.nameIsKey ? I18n.format(row.name) : row.name;
+    }
+
+    /** The name with a potion effect's level as vanilla writes it ({@code Speed II}); other entries keep the name. */
+    static String title(ClientStore.Shown s) {
+        String name = name(s.row);
+        if (s.potion == null || s.entry.count <= 1) {
+            return name;
+        }
+        String key = "enchantment.level." + s.entry.count;
+        return name + " " + (I18n.hasKey(key) ? I18n.format(key) : Integer.toString(s.entry.count));
     }
 
     static String line(ClientStore.Shown s) {
@@ -109,7 +122,7 @@ final class EntryRows {
     void drawCell(Minecraft mc, ClientStore.Shown s, int x, int y, int cellWidth, Style style) {
         double textScale = style.textScale;
         int iconX = x + (cellWidth - 16) / 2;
-        icon(mc, s.row, iconX, y);
+        icon(mc, s, iconX, y);
         String corner = HudText.corner(s.row, s.entry);
         if (!corner.isEmpty()) {
             double cornerScale = Math.max(textScale, 0.75);
@@ -148,12 +161,17 @@ final class EntryRows {
     }
 
     void draw(Minecraft mc, ClientStore.Shown s, int x, int y) {
-        icon(mc, s.row, x, y);
+        icon(mc, s, x, y);
         int colour = s.entry.active ? ACTIVE : INACTIVE;
         mc.fontRenderer.drawStringWithShadow(line(s), x + TEXT_X, y + 4, colour);
     }
 
-    private void icon(Minecraft mc, HudDefinition row, int x, int y) {
+    private void icon(Minecraft mc, ClientStore.Shown s, int x, int y) {
+        if (s.potion != null) {
+            potionIcon(mc, s.potion, x, y);
+            return;
+        }
+        HudDefinition row = s.row;
         if (row.iconItem != null) {
             ItemStack stack = items.computeIfAbsent(row.iconItem + "@" + row.iconMeta, k -> {
                 Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(row.iconItem));
@@ -175,6 +193,35 @@ final class EntryRows {
         mc.getTextureManager().bindTexture(texture);
         Gui.drawModalRectWithCustomSizedTexture(x, y, 0, 0, 16, 16, 16, 16);
         GlStateManager.disableBlend();
+    }
+
+    /**
+     * A potion effect's icon as vanilla draws it on its HUD (the status icon, then the effect's own
+     * {@code renderHUDEffect} for modded effects), without the background box: vanilla's 18 by 18 icon, which sits
+     * 3 pixels into its 24 by 24 box, is scaled to fill the 16 by 16 icon place, and a modded effect draws in the
+     * same box coordinates as on vanilla's HUD.
+     */
+    private static void potionIcon(Minecraft mc, PotionEffect effect, int x, int y) {
+        Potion potion = effect.getPotion();
+        GlStateManager.pushMatrix();
+        GlStateManager.translate(x, y, 0);
+        GlStateManager.scale(16 / 18.0, 16 / 18.0, 1);
+        GlStateManager.translate(-3, -3, 0);
+        GlStateManager.color(1, 1, 1, 1);
+        GlStateManager.enableAlpha();
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA,
+                GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA, GlStateManager.SourceFactor.ONE,
+                GlStateManager.DestFactor.ZERO);
+        mc.getTextureManager().bindTexture(GuiContainer.INVENTORY_BACKGROUND);
+        if (potion.hasStatusIcon()) {
+            int i = potion.getStatusIconIndex();
+            mc.ingameGUI.drawTexturedModalRect(3, 3, i % 8 * 18, 198 + i / 8 * 18, 18, 18);
+        }
+        potion.renderHUDEffect(effect, mc.ingameGUI, 0, 0, 0, 1);
+        GlStateManager.color(1, 1, 1, 1);
+        GlStateManager.disableBlend();
+        GlStateManager.popMatrix();
     }
 
     /** Puts back the state vanilla overlays and screens expect after an item was drawn. */

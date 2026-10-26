@@ -16,6 +16,8 @@ public final class HudDefinition {
     public static final byte POOL = 1;
     public static final byte MARK = 2;
     public static final byte COOLDOWN = 3;
+    /** A player's own potion effect: built on the client from vanilla's data, never in the server's table. */
+    public static final byte POTION = 4;
 
     /** The row's index in the table; entries name their definition by it. Lower indexes registered earlier. */
     public final int index;
