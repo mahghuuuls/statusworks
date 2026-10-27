@@ -19,6 +19,8 @@ import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.util.FakePlayer;
 import net.minecraftforge.common.util.FakePlayerFactory;
 
+import java.util.function.Consumer;
+
 /**
  * {@code /stwdev} checks for the development runtime:
  * <ul>
@@ -32,6 +34,8 @@ import net.minecraftforge.common.util.FakePlayerFactory;
  *   <li>{@code bulkpool}: gives the draining speed pool to every zombie named {@code stwbulk} within 64 blocks.</li>
  *   <li>{@code bulkmark}: the sender marks every zombie named {@code stwbulk} within 64 blocks with the unlimited
  *   test mark.</li>
+ *   <li>{@code load}: builds the REQ-193 budget load ({@link DevTestLoad}) at the sender, or at the world spawn from
+ *   the console; {@code load count} counts it, and {@code load clear} removes it.</li>
  * </ul>
  */
 final class DevTestCommand extends CommandBase {
@@ -43,7 +47,8 @@ final class DevTestCommand extends CommandBase {
 
     @Override
     public String getUsage(ICommandSender sender) {
-        return "/stwdev <dead|nonliving|fakeplayer|unknown|spawn <n>|bulk <duration>|bulkpool|bulkmark>";
+        return "/stwdev <dead|nonliving|fakeplayer|unknown|spawn <n>|bulk <duration>|bulkpool|bulkmark"
+                + "|load [clear|count]>";
     }
 
     @Override
@@ -144,6 +149,20 @@ final class DevTestCommand extends CommandBase {
                     }
                 }
                 log(sender, "bulkmark marked " + created + " zombies with " + mark);
+                break;
+            }
+            case "load": {
+                Consumer<String> out = line -> log(sender, line);
+                if (args.length > 1 && "clear".equals(args[1])) {
+                    DevTestLoad.clear((WorldServer) world, out);
+                } else if (args.length > 1 && "count".equals(args[1])) {
+                    DevTestLoad.count((WorldServer) world, out);
+                } else if (args.length > 1) {
+                    throw new WrongUsageException(getUsage(sender));
+                } else {
+                    Entity self = sender.getCommandSenderEntity();
+                    DevTestLoad.build((WorldServer) world, self != null ? pos : world.getSpawnPoint(), out);
+                }
                 break;
             }
             default:

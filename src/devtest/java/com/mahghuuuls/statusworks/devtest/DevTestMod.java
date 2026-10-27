@@ -20,10 +20,12 @@ import com.mahghuuuls.statusworks.api.definition.Ownership;
 import com.mahghuuuls.statusworks.api.definition.RefreshRule;
 import com.mahghuuuls.statusworks.api.definition.StatusDefinition;
 import com.mahghuuuls.statusworks.api.definition.ValueForm;
+import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
+import net.minecraftforge.fml.common.event.FMLServerStoppingEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -39,12 +41,21 @@ public class DevTestMod {
     public static final String MOD_ID = "statusworks_devtest";
     public static final Logger LOGGER = LogManager.getLogger("stw-devtest");
 
+    @Mod.Instance(MOD_ID)
+    static DevTestMod instance;
+
     static String id(String path) {
         return MOD_ID + ":" + path;
     }
 
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
+        // The budget load forces chunks only while it stands; a ticket left from an earlier run is dropped.
+        ForgeChunkManager.setForcedChunkLoadingCallback(this, (tickets, world) -> {
+            for (ForgeChunkManager.Ticket t : tickets) {
+                ForgeChunkManager.releaseTicket(t);
+            }
+        });
         register(logged(StatusDefinition.builder(id("shared"))).limit(5).defaultDuration(200)
                 .presentation(Presentation.builder().name("Shared").description("Test status: its stacks share one timer.")
                         .iconItem("minecraft:blaze_powder", 0).priority(1).build()).build());
@@ -68,6 +79,13 @@ public class DevTestMod {
                         .build())
                 .ownership(Ownership.PER_SOURCE).build());
         register(StatusDefinition.builder(id("long")).limit(5).defaultDuration(6000).build());
+        // The budget load (REQ-193, DevTestLoad): no callbacks, no presentation.
+        for (int i = 1; i <= DevTestLoad.STATUSES_EACH; i++) {
+            register(StatusDefinition.builder(DevTestLoad.statusId(i)).defaultDuration(72000).build());
+        }
+        register(StatusDefinition.builder(id("loadmany")).limit(DevTestLoad.STACKS).defaultDuration(72000)
+                .expiration(ExpirationMode.INDEPENDENT).build());
+        registerMark(MarkDefinition.builder(id("loadmark")).unlimitedTargets().defaultDuration(72000).build());
         register(logged(StatusDefinition.builder(id("interval"))).limit(3).defaultDuration(60)
                 .onInterval(20, c -> LOGGER.info("[stw-devtest] interval {} count={} ticksExisted={}",
                         c.definitionId(), c.countAfter(), c.entity().ticksExisted)).build());
@@ -282,6 +300,15 @@ public class DevTestMod {
         RegistrationResult late = StatusworksApi.registerStatus(StatusDefinition.builder(id("late")).build());
         LOGGER.info("[stw-devtest] late registration result: {}", late);
         event.registerServerCommand(new DevTestCommand());
+        if (Boolean.getBoolean(DevTestLoad.AUTO_PROPERTY)) {
+            LOGGER.info("[stw-devtest] {} set: the budget load runs by itself", DevTestLoad.AUTO_PROPERTY);
+            MinecraftForge.EVENT_BUS.register(new DevTestLoad.Auto(event.getServer()));
+        }
+    }
+
+    @Mod.EventHandler
+    public void serverStopping(FMLServerStoppingEvent event) {
+        DevTestLoad.reset();
     }
 
     /** Adds callbacks that log each status point as {@code [stw-devtest] <point> <context>}. */
