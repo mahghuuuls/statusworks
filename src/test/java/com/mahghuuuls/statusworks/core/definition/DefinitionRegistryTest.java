@@ -3,6 +3,7 @@ package com.mahghuuuls.statusworks.core.definition;
 import com.mahghuuuls.statusworks.api.RegistrationResult;
 import com.mahghuuuls.statusworks.api.definition.Direction;
 import com.mahghuuuls.statusworks.api.definition.ExpirationMode;
+import com.mahghuuuls.statusworks.api.definition.Contribution;
 import com.mahghuuuls.statusworks.api.definition.PoolDefinition;
 import com.mahghuuuls.statusworks.api.definition.StatusDefinition;
 import org.junit.jupiter.api.Test;
@@ -212,6 +213,50 @@ class DefinitionRegistryTest {
         assertTrue(r.isInvalidPool("a:still"));
         assertTrue(r.isInvalid("a:source"), "a status has no source audience");
         assertTrue(r.isInvalidCooldown("a:cool"));
+    }
+
+    @Test
+    void scriptTextForAParticleAudienceAndAMarkSideIsCheckedLikeEveryMode() {
+        DefinitionRegistry r = new DefinitionRegistry();
+        r.registerMark(com.mahghuuuls.statusworks.api.definition.MarkDefinition.builder("a:text")
+                .contribute("source", Contribution.attribute("generic.armor", "add", "fixed", 1))
+                .presentation(withParticles(com.mahghuuuls.statusworks.api.definition.Particles.builder("heart")
+                        .audience("both").build())).build(), "scripts/a.zs");
+        r.registerMark(com.mahghuuuls.statusworks.api.definition.MarkDefinition.builder("a:side")
+                .contribute("middle", Contribution.attribute("generic.armor", "add", "fixed", 1)).build(),
+                "scripts/a.zs");
+        r.registerMark(com.mahghuuuls.statusworks.api.definition.MarkDefinition.builder("a:upper")
+                .contribute("Source", Contribution.attribute("generic.armor", "add", "fixed", 1)).build(),
+                "scripts/a.zs");
+        r.registerCooldown(com.mahghuuuls.statusworks.api.definition.CooldownDefinition.builder("a:cd")
+                .contribute(Contribution.attribute("generic.armor", "add", "fixed", 1)).build(), "scripts/a.zs");
+        r.registerStatus(StatusDefinition.builder("a:audience").presentation(withParticles(com.mahghuuuls
+                .statusworks.api.definition.Particles.builder("flame").audience("everyone").build())).build(),
+                "scripts/a.zs");
+        List<DefinitionRegistry.Error> errors = r.freeze();
+        assertNotNull(r.mark("a:text"));
+        assertEquals(1, r.mark("a:text").definition().sourceContributions().size());
+        assertEquals(com.mahghuuuls.statusworks.api.definition.ParticleAudience.BOTH,
+                r.mark("a:text").definition().presentation().particles().audience());
+        assertEquals(4, errors.size(), "middle, Source (text is exact lowercase, like every mode), everyone, and"
+                + " the cooldown contribution");
+        for (DefinitionRegistry.Error e : errors) {
+            assertEquals(e.id.equals("a:cd") ? "bad-contribution" : "unknown-mode", e.reason, e.message);
+            assertEquals("scripts/a.zs", e.origin, "the script file is the origin");
+        }
+        assertTrue(r.isInvalid("a:audience"));
+        assertTrue(r.isInvalidCooldown("a:cd"));
+    }
+
+    @Test
+    void aScriptOriginIsTheFirstScriptFrameInsideTheScriptsFolder() {
+        StackTraceElement java = new StackTraceElement("a.B", "m", "B.java", 1);
+        StackTraceElement none = new StackTraceElement("a.C", "m", null, -1);
+        StackTraceElement script = new StackTraceElement("__ZenMain__", "run", "sub\\rage.zs", 12);
+        StackTraceElement later = new StackTraceElement("__ZenMain__", "run", "other.zs", 3);
+        assertEquals("scripts/sub/rage.zs", DefinitionRegistry.scriptOrigin(
+                new StackTraceElement[]{java, none, script, later}));
+        assertNull(DefinitionRegistry.scriptOrigin(new StackTraceElement[]{java, none}), "no script: the mod id is used");
     }
 
     @Test

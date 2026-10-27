@@ -54,6 +54,7 @@ public final class MarkDefinition {
     @Nullable private final MarkRemovedCallback onRemoved;
     private final List<Contribution> sourceContributions;
     private final List<Contribution> targetContributions;
+    private final List<String> unknownSides;
     private final Presentation presentation;
 
     private MarkDefinition(Builder b) {
@@ -77,6 +78,7 @@ public final class MarkDefinition {
         this.onRemoved = b.onRemoved;
         this.sourceContributions = Collections.unmodifiableList(new ArrayList<>(b.sourceContributions));
         this.targetContributions = Collections.unmodifiableList(new ArrayList<>(b.targetContributions));
+        this.unknownSides = Collections.unmodifiableList(new ArrayList<>(b.unknownSides));
         this.presentation = b.presentation;
     }
 
@@ -191,6 +193,11 @@ public final class MarkDefinition {
         return presentation;
     }
 
+    /** Side texts given to {@link Builder#contribute(String, Contribution)} that are not a side; they make it invalid. */
+    public List<String> unknownSides() {
+        return unknownSides;
+    }
+
     /** The contributions of one side. */
     public List<Contribution> contributions(MarkSide side) {
         return side == MarkSide.SOURCE ? sourceContributions : targetContributions;
@@ -219,6 +226,7 @@ public final class MarkDefinition {
         private MarkRemovedCallback onRemoved;
         private final List<Contribution> sourceContributions = new ArrayList<>();
         private final List<Contribution> targetContributions = new ArrayList<>();
+        private final List<String> unknownSides = new ArrayList<>();
         private Presentation presentation = Presentation.DEFAULT;
 
         private Builder(String id) {
@@ -325,6 +333,19 @@ public final class MarkDefinition {
         public Builder onRemoved(MarkRemovedCallback callback) {
             this.onRemoved = callback;
             return this;
+        }
+
+        /**
+         * {@link #contribute(MarkSide, Contribution)} with the side as text, {@code source} or {@code target}; an
+         * unknown side makes the definition invalid.
+         */
+        public Builder contribute(String side, Contribution contribution) {
+            MarkSide s = MarkSide.fromText(side);
+            if (s == null) {
+                unknownSides.add(String.valueOf(side));
+                return this;
+            }
+            return contribute(s, contribution);
         }
 
         /** Adds a contribution to one side while the mark is active; its value form must be {@code fixed}. */

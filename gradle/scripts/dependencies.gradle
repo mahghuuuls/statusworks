@@ -55,6 +55,11 @@ dependencies {
     // after:crafttweaker@[4.1.20,). CraftTweaker's archive is already development-facing and
     // fails RFG's deobfuscation transform, so it is declared without rfg.deobf().
     compileOnly 'CraftTweaker2:CraftTweaker2-MC1120-Main:1.12-4.1.20.716'
+    // The same build on the development runs, so scripts in run/scripts load there. It is never
+    // shipped and never in the jar. Run with -PnoCraftTweaker to check the mod without it.
+    if (!project.hasProperty('noCraftTweaker')) {
+        runtimeOnly 'CraftTweaker2:CraftTweaker2-MC1120-Main:1.12-4.1.20.716'
+    }
 
     // Agent Diagnostics Toolkit 1.2.0: development runtime only. Never compile scope, never
     // shaded, never declared in mod metadata. The jar is ignored by Git (libs/).

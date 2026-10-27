@@ -158,8 +158,15 @@ public final class StatusworksCore implements StatusworksApi.Backend {
         return registry.isFrozen();
     }
 
-    /** The mod that is registering, as the definition's origin. */
+    /**
+     * The definition's origin: the script file a CraftTweaker script registers from ({@code scripts/a.zs}), found as
+     * the first ZenScript frame of the current call, or else the mod that is registering.
+     */
     private static String currentOrigin() {
+        String script = DefinitionRegistry.scriptOrigin(Thread.currentThread().getStackTrace());
+        if (script != null) {
+            return script;
+        }
         ModContainer container = Loader.instance().activeModContainer();
         return container == null ? "unknown" : container.getModId();
     }

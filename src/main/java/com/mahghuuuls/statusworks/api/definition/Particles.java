@@ -23,6 +23,7 @@ public final class Particles {
     private final int color;
     private final double perSecond;
     @Nullable private final ParticleAudience audience;
+    @Nullable private final String audienceText;
     private final boolean longDistance;
 
     private Particles(Builder b) {
@@ -30,6 +31,7 @@ public final class Particles {
         this.color = b.color;
         this.perSecond = b.perSecond;
         this.audience = b.audience;
+        this.audienceText = b.audienceText;
         this.longDistance = b.longDistance;
     }
 
@@ -62,6 +64,12 @@ public final class Particles {
         return audience;
     }
 
+    /** The audience as the author wrote it in text, or null when it was given as a value or not at all. */
+    @Nullable
+    public String audienceText() {
+        return audienceText;
+    }
+
     /** Whether nearby players see them as far as the game shows the entity, not only within 32 blocks. */
     public boolean longDistance() {
         return longDistance;
@@ -72,6 +80,7 @@ public final class Particles {
         private int color = NO_COLOR;
         private double perSecond = 4;
         private ParticleAudience audience;
+        private String audienceText;
         private boolean longDistance;
 
         private Builder(String type) {
@@ -99,6 +108,17 @@ public final class Particles {
         /** Who sees them; statuses and pools take only {@link ParticleAudience#NEARBY}. */
         public Builder audience(ParticleAudience audience) {
             this.audience = audience;
+            this.audienceText = null;
+            return this;
+        }
+
+        /**
+         * Who sees them, as text: {@code nearby}, {@code source}, {@code target}, or {@code both}. Unknown text makes
+         * the definition invalid.
+         */
+        public Builder audience(String text) {
+            this.audienceText = text;
+            this.audience = ParticleAudience.fromText(text);
             return this;
         }
 

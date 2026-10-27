@@ -10,5 +10,10 @@ public enum ProgressionState {
     /** The rule changes the amount over active time. */
     ACTIVE,
     /** The rule is paused by an operation; a {@code to_target} deadline keeps its remaining time. */
-    PAUSED
+    PAUSED;
+
+    /** The text value scripts read: {@code none}, {@code active}, or {@code paused}. */
+    public String text() {
+        return name().toLowerCase(java.util.Locale.ROOT);
+    }
 }

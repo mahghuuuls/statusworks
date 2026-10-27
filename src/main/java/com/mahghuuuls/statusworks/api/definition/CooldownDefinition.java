@@ -20,6 +20,7 @@ public final class CooldownDefinition {
     private final String deathRuleText;
     @Nullable private final CooldownEndedCallback onEnded;
     private final Presentation presentation;
+    private final int contributionCount;
 
     private CooldownDefinition(Builder b) {
         this.id = b.id;
@@ -28,6 +29,12 @@ public final class CooldownDefinition {
         this.deathRule = DeathRule.fromText(b.deathRuleText);
         this.onEnded = b.onEnded;
         this.presentation = b.presentation;
+        this.contributionCount = b.contributionCount;
+    }
+
+    /** Contributions given to the builder; any makes the definition invalid (cooldowns carry none). */
+    public int contributionCount() {
+        return contributionCount;
     }
 
     public static Builder builder(String id) {
@@ -70,6 +77,7 @@ public final class CooldownDefinition {
         private String deathRuleText = DeathRule.KEEP.text();
         private CooldownEndedCallback onEnded;
         private Presentation presentation = Presentation.DEFAULT;
+        private int contributionCount;
 
         private Builder(String id) {
             this.id = id;
@@ -101,6 +109,15 @@ public final class CooldownDefinition {
         /** How the definition looks on the players' HUD and detail view. */
         public Builder presentation(Presentation presentation) {
             this.presentation = presentation;
+            return this;
+        }
+
+        /**
+         * A cooldown carries no contributions: any contribution given here makes the definition invalid when
+         * definitions freeze. It exists so a script that supplies one gets that error instead of a script error.
+         */
+        public Builder contribute(Contribution contribution) {
+            contributionCount++;
             return this;
         }
 

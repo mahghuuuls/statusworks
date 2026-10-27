@@ -644,6 +644,10 @@ public final class DefinitionRegistry {
         for (MarkSide side : MarkSide.values()) {
             validateContributions(d.contributions(side), Kind.MARK, id, origin, found);
         }
+        for (String side : d.unknownSides()) {
+            found.add(new Error(id, "unknown-mode", "contribution side \"" + side + "\" is not source or target",
+                    origin));
+        }
         validatePresentation(d.presentation(), "mark", id, origin, found);
         return found;
     }
@@ -661,6 +665,9 @@ public final class DefinitionRegistry {
         if (d.deathRule() == null) {
             found.add(new Error(id, "unknown-mode", "death rule \"" + d.deathRuleText()
                     + "\" is not clear or keep", origin));
+        }
+        if (d.contributionCount() > 0) {
+            found.add(new Error(id, "bad-contribution", "cooldowns cannot have contributions", origin));
         }
         validatePresentation(d.presentation(), "cooldown", id, origin, found);
         return found;
@@ -715,10 +722,29 @@ public final class DefinitionRegistry {
             found.add(new Error(id, "bad-particles", "particles per second " + particles.perSecond()
                     + " is not above 0 and at most 100", origin));
         }
+        if (particles.audienceText() != null && particles.audience() == null) {
+            found.add(new Error(id, "unknown-mode", "particle audience \"" + particles.audienceText()
+                    + "\" is not nearby, source, target, or both", origin));
+        }
         if (!"mark".equals(kind) && particles.audience() != null && particles.audience() != ParticleAudience.NEARBY) {
             found.add(new Error(id, "bad-particles", "a " + kind + " shows particles to nearby players only; audience "
-                    + particles.audience().name().toLowerCase(java.util.Locale.ROOT) + " is for marks", origin));
+                    + particles.audience().text() + " is for marks", origin));
         }
+    }
+
+    /**
+     * The script file a call comes from, as an origin ({@code scripts/sub/a.zs}): the first ZenScript frame of the
+     * stack, whose file name CraftTweaker sets to the path inside its scripts folder; null for a call from no script.
+     */
+    @Nullable
+    public static String scriptOrigin(StackTraceElement[] stack) {
+        for (StackTraceElement frame : stack) {
+            String file = frame == null ? null : frame.getFileName();
+            if (file != null && file.endsWith(".zs")) {
+                return "scripts/" + file.replace('\\', '/');
+            }
+        }
+        return null;
     }
 
     public synchronized boolean isFrozen() {
