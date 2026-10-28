@@ -8,10 +8,14 @@ import com.mahghuuuls.statusworks.core.mark.MarkStore;
 import com.mahghuuuls.statusworks.core.state.CooldownOperations;
 import com.mahghuuuls.statusworks.core.state.PoolOperations;
 import com.mahghuuuls.statusworks.core.state.StatusOperations;
+import net.minecraft.command.ICommand;
 import net.minecraft.command.ICommandSender;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraftforge.server.command.CommandTreeBase;
 import org.apache.logging.log4j.Logger;
+
+import java.util.Arrays;
+import java.util.StringJoiner;
 
 /**
  * {@code /statusworks}: the operator command of the diagnostic mode. Every subcommand needs permission level 2.
@@ -52,16 +56,19 @@ public final class StatusworksCommand extends CommandTreeBase {
         }
     }
 
+    /** The usage line, listing every subcommand in registration order, so it cannot leave one out. */
+    private final String usage;
+
     public StatusworksCommand(Context context) {
-        addSubcommand(new InspectCommand(context));
-        addSubcommand(new StatusCommand(context));
-        addSubcommand(new PoolCommand(context));
-        addSubcommand(new MarkCommand(context));
-        addSubcommand(new CooldownCommand(context));
-        addSubcommand(new DefinitionsCommand(context));
-        addSubcommand(new DebugCommand(context));
-        addSubcommand(new TimingCommand(context));
-        addSubcommand(new ErrorsCommand(context));
+        StringJoiner names = new StringJoiner("|", "/statusworks <", ">");
+        for (ICommand subcommand : Arrays.asList(new InspectCommand(context), new StatusCommand(context),
+                new PoolCommand(context), new MarkCommand(context), new CooldownCommand(context),
+                new DefinitionsCommand(context), new DebugCommand(context), new TimingCommand(context),
+                new ErrorsCommand(context))) {
+            addSubcommand(subcommand);
+            names.add(subcommand.getName());
+        }
+        usage = names.toString();
     }
 
     @Override
@@ -71,7 +78,7 @@ public final class StatusworksCommand extends CommandTreeBase {
 
     @Override
     public String getUsage(ICommandSender sender) {
-        return "/statusworks <inspect|status|pool|cooldown|definitions|debug|timing|errors>";
+        return usage;
     }
 
     @Override
