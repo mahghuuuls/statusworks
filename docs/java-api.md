@@ -1,0 +1,73 @@
+# Using Statusworks from a Java mod
+
+This guide is for mod authors. Statusworks gives your mod statuses, pools, marks, and cooldowns on any living entity, with saving, syncing to clients, HUD entries, particles, and attribute bonuses already handled. The full example is [`examples/JavaExample.java`](../examples/JavaExample.java). The same concepts, with every option explained, are in the [scripting guide](crafttweaker.md); the Java builders take the same options as enums or as the same lowercase text.
+
+## Setup
+
+- Compile against the Statusworks jar and declare `dependencies = "required-after:statusworks"` in your `@Mod`.
+- Everything public is under `com.mahghuuuls.statusworks.api`. Nothing outside that package is API.
+- Register definitions during startup (pre-init to post-init). Definitions freeze when loading completes; a later registration is refused.
+- Operations run on the server. On a client world they do nothing.
+
+## Defining
+
+`StatusworksApi` registers definitions built with the builders in `api.definition`:
+
+```java
+StatusworksApi.registerStatus(StatusDefinition.builder("mymod:rage")
+        .limit(5)
+        .expiration(ExpirationMode.GRADUAL)
+        .defaultDuration(100)
+        .contribute(Contribution.attribute("generic.attackDamage", AttributeOperation.ADD, ValueForm.PER_STACK, 1))
+        .onApplied(context -> MyMod.LOGGER.info("Rage on {}", context.entity().getName()))
+        .presentation(Presentation.builder().name("Rage").iconItem("minecraft:blaze_powder", 0).build())
+        .build());
+```
+
+- `registerStatus`, `registerPool`, `registerMark`, `registerCooldown` take a `StatusDefinition`, `PoolDefinition`, `MarkDefinition`, or `CooldownDefinition` from its `builder(id)`.
+- Each returns a `RegistrationResult`: `isAccepted()`, or `error()` with the reason (for example, registration after the freeze). Acceptance does not check the definition: it is validated when loading completes, and an invalid one is named in the log and disabled (or stops the game when the server's `strictMode` is on).
+- `Presentation.builder()` sets the name (or a language key), description, icon, which numbers show, priority, `hidden()`, and `particles(Particles.builder(type)...build())` with color, rate, and audience.
+
+## Changing and querying state
+
+| Service | Main methods |
+| --- | --- |
+| `StatusworksApi.statuses()` | `apply(entity, id, stacks)`, `apply(entity, id, stacks, source, ticks)`, `remove`, `setCount`, `clear`, `has`, `count`, `remainingTicks`, `sources` |
+| `StatusworksApi.pools()` | `add`, `subtract`, `set`, `setCapacity`, `setLifetime`, `extendLifetime`, `pause`, `resume`, `remove`, `has`, `get` (a `PoolSnapshot`) |
+| `StatusworksApi.marks()` | `mark(source, target, id)`, `mark(source, target, id, ticks)`, `unmark`, `clearSource`, `clearTarget`, `isMarked`, `targets`, `sources`, `targetEntities`, `sourceEntities`, `targetCount`, `sourceCount` |
+| `StatusworksApi.cooldowns()` | `start`, `restart`, `extend`, `reduce`, `clear`, `startIfReady`, `isRunning`, `remaining` |
+| `StatusworksApi.contributions()` | `currentValues(entity, typeId)` |
+
+Change methods return a result object with `succeeded()` and what changed: `StackChange` (`added()`, `rejected()`), `CountChange`, `PoolChange`, and `CooldownChange` (values before and after), each with `failure()` saying why it did not succeed, and `MarkResult` with `outcome()`, `replacedTarget()`, and `reason()` (set only when rejected). `unmark`, `isMarked`, `clearSource`, `clearTarget`, and `startIfReady` return a boolean or a count. Queries change nothing.
+
+## Callbacks
+
+Builders take callbacks as lambdas: `onApplied`, `onQuantityChanged`, `onRemoved`, `onInterval(ticks, ...)` for statuses; `onAmountChanged`, `onEmpty`, `onFull`, `onTargetReached`, `onRemoved` for pools; `onApplied`, `onInactive`, `onActive`, `onRemoved`, `onInterval` for marks; `onEnded` for cooldowns. Each receives a context from `api.callback`: `StatusContext` (entity, definition id, counts before and after, source and source entity, removal reason), `PoolContext` (entity, definition id, amounts before and after, capacity, reason), `MarkContext` (definition id, source and target with their ids, reason), `CooldownContext` (entity, definition id, reason). They run on the server; an exception is caught, logged once, and counted, and after 10 failures in a row the callback is disabled until restart.
+
+## Your own contribution types
+
+Attribute modifiers are built in. To let statuses, pools, and marks drive something else, such as a mana regeneration rate or a custom stat, register a `ContributionType` (`api.contribution`) during startup:
+
+```java
+StatusworksApi.registerContributionType(new ContributionType() {
+    public String id() { return "mymod:mana_regen"; }
+    public boolean appliesTo(EntityLivingBase entity) { return entity instanceof EntityPlayer; }
+    public void onValue(EntityLivingBase entity, String key, double value) { /* apply the value */ }
+    public void onEnd(EntityLivingBase entity, String key) { /* remove it */ }
+});
+```
+
+Statusworks calls `onValue` whenever a contribution's value changes, and again with the same value whenever the entity joins a world (load, dimension change, respawn), so it must be safe to repeat; it calls `onEnd` when the contribution ends. There is one key per contributing instance. `appliesTo` decides which entities the type acts on. Definitions then use `Contribution.type("mymod:mana_regen", ValueForm.PER_STACK, 0.5)`, and scripts use `contributeType`.
+
+## Client view
+
+On the client, `api.client.StatusworksClient.view()` gives a read-only `StatusworksClientView` (it is `null` on a dedicated server and before the client has started): `ownEntries()` (the player's own entries, including ones the player hid on the HUD) and `nearbyEntries()` (entries with particles that this player is sent, by entity id; author-hidden definitions never appear). Each `ClientEntry` has the definition id, kind, name, count, amount, capacity, remaining time, the other participant of a mark, and whether it is active. Use it to draw your own visuals; it changes nothing.
+
+## What you can build
+
+- Buffs and debuffs that stack, decay one stack at a time, or keep a timer per application.
+- Resources such as mana, rage, or shields that fill or drain by themselves and scale attributes with their fill.
+- Links between two entities: a hunter and its quarry, a healer and a patient, a tether that breaks with distance.
+- Per-attacker state such as combo counters or bleed stacks from each player.
+- Shared cooldowns between items or abilities.
+- Stat systems driven by any of these through your own contribution type.
