@@ -166,6 +166,15 @@ final class EntryRows {
         mc.fontRenderer.drawStringWithShadow(line(s), x + TEXT_X, y + 4, colour);
     }
 
+    /** A list row mirrored to end at {@code right}: the icon at the right end, its text right-aligned before it. */
+    void drawFromRight(Minecraft mc, ClientStore.Shown s, int right, int y) {
+        icon(mc, s, right - 16, y);
+        int colour = s.entry.active ? ACTIVE : INACTIVE;
+        String text = line(s);
+        mc.fontRenderer.drawStringWithShadow(text, right - TEXT_X - mc.fontRenderer.getStringWidth(text), y + 4,
+                colour);
+    }
+
     private void icon(Minecraft mc, ClientStore.Shown s, int x, int y) {
         if (s.potion != null) {
             potionIcon(mc, s.potion, x, y);
@@ -199,10 +208,13 @@ final class EntryRows {
      * A potion effect's icon as vanilla draws it on its HUD (the status icon, then the effect's own
      * {@code renderHUDEffect} for modded effects), without the background box: vanilla's 18 by 18 icon, which sits
      * 3 pixels into its 24 by 24 box, is scaled to fill the 16 by 16 icon place, and a modded effect draws in the
-     * same box coordinates as on vanilla's HUD.
+     * same box coordinates as on vanilla's HUD. The icon is drawn at depth 0 with the depth test off, like the small
+     * texts: Forge keeps the in-game HUD's depth at -90, and an inventory screen leaves the depth test on, so an icon
+     * drawn at the HUD's depth there is hidden behind the screen's dimmed background.
      */
     private static void potionIcon(Minecraft mc, PotionEffect effect, int x, int y) {
         Potion potion = effect.getPotion();
+        GlStateManager.disableDepth();
         GlStateManager.pushMatrix();
         GlStateManager.translate(x, y, 0);
         GlStateManager.scale(16 / 18.0, 16 / 18.0, 1);
@@ -216,12 +228,13 @@ final class EntryRows {
         mc.getTextureManager().bindTexture(GuiContainer.INVENTORY_BACKGROUND);
         if (potion.hasStatusIcon()) {
             int i = potion.getStatusIconIndex();
-            mc.ingameGUI.drawTexturedModalRect(3, 3, i % 8 * 18, 198 + i / 8 * 18, 18, 18);
+            Gui.drawModalRectWithCustomSizedTexture(3, 3, i % 8 * 18, 198 + i / 8 * 18, 18, 18, 256, 256);
         }
         potion.renderHUDEffect(effect, mc.ingameGUI, 0, 0, 0, 1);
         GlStateManager.color(1, 1, 1, 1);
         GlStateManager.disableBlend();
         GlStateManager.popMatrix();
+        GlStateManager.enableDepth();
     }
 
     /** Puts back the state vanilla overlays and screens expect after an item was drawn. */

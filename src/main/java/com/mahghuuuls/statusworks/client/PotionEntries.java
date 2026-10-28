@@ -38,7 +38,7 @@ final class PotionEntries {
             Potion potion = effect.getPotion();
             ResourceLocation id = potion.getRegistryName();
             if (id == null || !PotionRules.shown(potion.shouldRenderHUD(effect), effect.doesShowParticles(),
-                    settings.hidden.contains(id.toString()))) {
+                    settings.hidden.contains(id.toString()), settings.hideInventoryEffects)) {
                 continue;
             }
             // A row of its own, never sent and never in the server's table: negative indexes keep it apart. An

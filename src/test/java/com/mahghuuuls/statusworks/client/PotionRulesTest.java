@@ -23,11 +23,18 @@ class PotionRulesTest {
     }
 
     @Test
-    void anEffectShowsOnlyWhenVanillaWouldShowItAndThePlayerDidNotHideIt() {
-        assertTrue(PotionRules.shown(true, true, false));
-        assertFalse(PotionRules.shown(false, true, false), "the effect hides its HUD icon");
-        assertFalse(PotionRules.shown(true, false, false), "hidden particles: vanilla does not show it either");
-        assertFalse(PotionRules.shown(true, true, true), "hidden by the player's id list");
+    void withVanillaInventoryListShownAnEffectShowsOnlyWhenVanillaWouldShowIt() {
+        assertTrue(PotionRules.shown(true, true, false, false));
+        assertFalse(PotionRules.shown(false, true, false, false), "the effect hides its HUD icon");
+        assertFalse(PotionRules.shown(true, false, false, false), "hidden particles: vanilla's HUD leaves it out");
+        assertFalse(PotionRules.shown(true, true, true, false), "hidden by the player's id list");
+    }
+
+    @Test
+    void withVanillaInventoryListHiddenAnEffectWithHiddenParticlesShowsToo() {
+        assertTrue(PotionRules.shown(true, false, false, true), "this HUD is the only place left");
+        assertFalse(PotionRules.shown(false, false, false, true), "an effect hiding its HUD icon stays hidden");
+        assertFalse(PotionRules.shown(true, false, true, true), "the player's id list still hides it");
     }
 
     @Test

@@ -10,11 +10,13 @@ final class PotionRules {
     }
 
     /**
-     * Whether an effect shows, once the player turned the setting on: it draws on the vanilla HUD (it does not hide
-     * its icon and shows its particles, as vanilla requires), and the player did not hide it by id.
+     * Whether an effect shows, once the player turned the setting on: it does not hide its HUD icon, the player did not
+     * hide it by id, and it shows its particles as vanilla's HUD requires, unless vanilla's inventory list is hidden;
+     * then this HUD is the only place left, so an effect with hidden particles shows too.
      */
-    static boolean shown(boolean rendersHud, boolean showsParticles, boolean hiddenByPlayer) {
-        return rendersHud && showsParticles && !hiddenByPlayer;
+    static boolean shown(boolean rendersHud, boolean showsParticles, boolean hiddenByPlayer,
+                         boolean inventoryListHidden) {
+        return rendersHud && (showsParticles || inventoryListHidden) && !hiddenByPlayer;
     }
 
     /** The level as a count: amplifier 0 is level 1, which shows no number on the corner. */

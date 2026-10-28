@@ -18,7 +18,7 @@ public final class ClientSetup {
 
     /** Called once from the client proxy in pre-init, on the physical client only. */
     public static void init(File configDirectory, Logger logger) {
-        ClientSettings settings = new ClientSettings(new File(configDirectory, "statusworks-client.cfg"));
+        ClientSettings settings = new ClientSettings(new File(configDirectory, "statusworks-client.cfg"), logger);
         settings.load();
         ClientStore store = new ClientStore(settings, logger);
         StatusworksNetwork.setReceiver(store);
@@ -26,6 +26,7 @@ public final class ClientSetup {
         HudRenderer hud = new HudRenderer(store, settings);
         MinecraftForge.EVENT_BUS.register(hud);
         MinecraftForge.EVENT_BUS.register(new DetailView(hud));
+        MinecraftForge.EVENT_BUS.register(new InventoryEffects(settings, logger));
         MinecraftForge.EVENT_BUS.register(new ParticleEmitter(store, settings));
         StatusworksClient.install(new ClientStatusworksView(store));
     }

@@ -14,12 +14,13 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Draws the player's entries on the screen after the vanilla overlay: by default an icon grid at the top left,
- * which keeps clear of the vanilla potion icons at the top right, with a fill bar under a pool's icon, the time
- * under each icon (short form by default), and the stack count on the icon's corner; or, when the player turns
- * names on, a list of rows with names. The corner, offset, scale, maximum, icons per row, and text size come from
- * the client settings; entries over the maximum show as {@code +N}. With the potion setting on, the player's own
- * potion effects follow the Statusworks entries, and vanilla's potion icons at the top right are not drawn.
+ * Draws the player's entries on the screen after the vanilla overlay: by default an icon grid at the top right, the
+ * first entry at the right edge and each next one to its left, with a fill bar under a pool's icon, the time under
+ * each icon (short form by default), and the stack count on the icon's corner; or, when the player turns names on, a
+ * list of rows with names. The anchor, offset, entry and row directions ({@link HudLayout}), scale, maximum, icons
+ * per row, and text size come from the client settings; entries over the maximum show as {@code +N}. With the potion
+ * setting on (the default), the player's own potion effects follow the Statusworks entries, and vanilla's potion
+ * icons at the top right are not drawn.
  *
  * <p>With the inventory open, the inventory view draws the same layout at full brightness and explains the entry
  * under the pointer, so the overlay skips its own, darkened copy.</p>
@@ -66,10 +67,15 @@ public final class HudRenderer {
     /** With the player's potion effects on this HUD, vanilla's own icons at the top right are not drawn. */
     @SubscribeEvent
     public void onOverlayPre(RenderGameOverlayEvent.Pre event) {
-        if (event.getType() == RenderGameOverlayEvent.ElementType.POTION_ICONS && settings.hudEnabled
-                && settings.potionEffects && hudVisible(Minecraft.getMinecraft())) {
+        if (event.getType() == RenderGameOverlayEvent.ElementType.POTION_ICONS
+                && showsPotions(settings, Minecraft.getMinecraft())) {
             event.setCanceled(true);
         }
+    }
+
+    /** Whether the player's potion effects are on this HUD now: the HUD and the potion setting on, the HUD visible. */
+    static boolean showsPotions(ClientSettings settings, Minecraft mc) {
+        return settings.hudEnabled && settings.potionEffects && hudVisible(mc);
     }
 
     /** Whether the HUD is drawn at all: not with the GUI hidden (F1) or the debug screen (F3) on. */
@@ -122,18 +128,29 @@ public final class HudRenderer {
 
     private void drawList(Minecraft mc, int screenWidth, int screenHeight, List<ClientStore.Shown> drawn,
                           List<ClientStore.Shown> rest, String more, double scale, List<Hit> hits) {
-        int width = Math.max(EntryRows.width(mc, drawn), mc.fontRenderer.getStringWidth(more));
+        int width = Math.max(EntryRows.width(mc, drawn), EntryRows.TEXT_X + mc.fontRenderer.getStringWidth(more));
         int height = drawn.size() * EntryRows.ROW_HEIGHT + (more.isEmpty() ? 0 : 10);
         int x = originX(screenWidth, scale, width);
         int y = originY(screenHeight, scale, height);
+        boolean upward = HudLayout.upward(settings.anchor, settings.rowDirection);
+        // At a right-side anchor each row ends at the right edge with its icon outermost, so a text that changes
+        // width never moves the icons.
+        boolean fromRight = HudLayout.listFromRight(settings.anchor);
+        int moreHeight = more.isEmpty() ? 0 : 10;
         for (int i = 0; i < drawn.size(); i++) {
-            int rowY = y + i * EntryRows.ROW_HEIGHT;
-            rows.draw(mc, drawn.get(i), x, rowY);
+            int rowY = HudLayout.listRowY(y, i, drawn.size(), EntryRows.ROW_HEIGHT, moreHeight, upward);
+            if (fromRight) {
+                rows.drawFromRight(mc, drawn.get(i), x + width, rowY);
+            } else {
+                rows.draw(mc, drawn.get(i), x, rowY);
+            }
             hits.add(hit(x, rowY, width, EntryRows.ROW_HEIGHT, scale, drawn.get(i), Collections.emptyList()));
         }
         if (!more.isEmpty()) {
-            int moreY = y + drawn.size() * EntryRows.ROW_HEIGHT;
-            mc.fontRenderer.drawStringWithShadow(more, x + EntryRows.TEXT_X, moreY, 0xFFFFFF);
+            int moreY = HudLayout.listMoreY(y, drawn.size(), EntryRows.ROW_HEIGHT, upward);
+            int moreX = fromRight ? x + width - EntryRows.TEXT_X - mc.fontRenderer.getStringWidth(more)
+                    : x + EntryRows.TEXT_X;
+            mc.fontRenderer.drawStringWithShadow(more, moreX, moreY, 0xFFFFFF);
             hits.add(hit(x, moreY, width, 10, scale, null, rest));
         }
     }
@@ -146,18 +163,16 @@ public final class HudRenderer {
         int cellHeight = EntryRows.cellHeight(drawn, style);
         int cells = drawn.size() + (more.isEmpty() ? 0 : 1);
         int perRow = Math.max(1, settings.iconsPerRow);
-        int columns = Math.min(perRow, cells);
-        int gridRows = (cells + perRow - 1) / perRow;
+        int columns = HudLayout.gridColumns(cells, perRow);
+        int gridRows = HudLayout.gridRows(cells, perRow);
         int x0 = originX(screenWidth, scale, columns * cellWidth);
         int y0 = originY(screenHeight, scale, gridRows * cellHeight);
-        boolean right = settings.corner.right();
-        boolean bottom = settings.corner.bottom();
+        boolean rightToLeft = HudLayout.rightToLeft(settings.anchor, settings.entryDirection);
+        boolean upward = HudLayout.upward(settings.anchor, settings.rowDirection);
         for (int i = 0; i < cells; i++) {
-            // The first cell sits in the chosen corner; the grid grows away from it.
-            int col = i % perRow;
-            int row = i / perRow;
-            int x = x0 + (right ? (columns - 1 - col) : col) * cellWidth;
-            int y = y0 + (bottom ? (gridRows - 1 - row) : row) * cellHeight;
+            // By default the first cell sits at the anchor's side and edge, and the grid grows away from them.
+            int x = HudLayout.cellX(x0, i, perRow, columns, cellWidth, rightToLeft);
+            int y = HudLayout.cellY(y0, i, perRow, gridRows, cellHeight, upward);
             if (i < drawn.size()) {
                 rows.drawCell(mc, drawn.get(i), x, y, cellWidth, style);
                 hits.add(hit(x, y, cellWidth, cellHeight, scale, drawn.get(i), Collections.emptyList()));
@@ -175,12 +190,10 @@ public final class HudRenderer {
     }
 
     private int originX(int screenWidth, double scale, int width) {
-        double area = screenWidth / scale;
-        return (int) (settings.corner.right() ? area - settings.offsetX / scale - width : settings.offsetX / scale);
+        return HudLayout.originX(settings.anchor, screenWidth / scale, settings.offsetX / scale, width);
     }
 
     private int originY(int screenHeight, double scale, int height) {
-        double area = screenHeight / scale;
-        return (int) (settings.corner.bottom() ? area - settings.offsetY / scale - height : settings.offsetY / scale);
+        return HudLayout.originY(settings.anchor, screenHeight / scale, settings.offsetY / scale, height);
     }
 }
