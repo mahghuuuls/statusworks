@@ -25,8 +25,9 @@ StatusworksApi.registerStatus(StatusDefinition.builder("mymod:rage")
 ```
 
 - `registerStatus`, `registerPool`, `registerMark`, `registerCooldown` take a `StatusDefinition`, `PoolDefinition`, `MarkDefinition`, or `CooldownDefinition` from its `builder(id)`.
+- Attribute contributions can name other mods' attributes, such as Potion Core's `potioncore.jumpHeight`, when a player or a zombie has the attribute at server start; see the [scripting guide](crafttweaker.md#contributions) for the rules.
 - Each returns a `RegistrationResult`: `isAccepted()`, or `error()` with the reason (for example, registration after the freeze). Acceptance does not check the definition: it is validated when loading completes, and an invalid one is named in the log and disabled (or stops the game when the server's `strictMode` is on).
-- `Presentation.builder()` sets the name (or a language key), description, icon, which numbers show, priority, `hidden()`, and `particles(Particles.builder(type)...build())` with color, rate, and audience.
+- `Presentation.builder()` sets the name (or a language key), description, icon, which numbers show, priority, `hidden()`, `harmful()` (a debuff on the HUD; for a mark, on both sides), `markHarmful(onSource, onTarget)` for a mark's two sides (default `false, true`; the last of the two calls wins), and `particles(Particles.builder(type)...build())` with color, rate, and audience.
 
 ## Changing and querying state
 
@@ -61,7 +62,7 @@ Statusworks calls `onValue` whenever a contribution's value changes, and again w
 
 ## Client view
 
-On the client, `api.client.StatusworksClient.view()` gives a read-only `StatusworksClientView` (it is `null` on a dedicated server and before the client has started): `ownEntries()` (the player's own entries, including ones the player hid on the HUD) and `nearbyEntries()` (entries with particles that this player is sent, by entity id; author-hidden definitions never appear). Each `ClientEntry` has the definition id, kind, name, count, amount, capacity, remaining time, the other participant of a mark, and whether it is active. Use it to draw your own visuals; it changes nothing.
+On the client, `api.client.StatusworksClient.view()` gives a read-only `StatusworksClientView` (it is `null` on a dedicated server and before the client has started): `ownEntries()` (the player's own entries, including ones the player hid on the HUD) and `nearbyEntries()` (entries with particles that this player is sent, by entity id; author-hidden definitions never appear). Each `ClientEntry` has the definition id, kind, name, count, amount, capacity, remaining time, the other participant of a mark, whether it is active, and `harmful()`: whether the entry is a debuff by its definition (a mark in your own entries uses your side's value; a mark on another entity uses the target's value). Use it to draw your own visuals; it changes nothing.
 
 ## What you can build
 

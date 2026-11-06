@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-06
+
+Client and server must run the same Statusworks version: update both to 1.1.0.
+
+### Added
+
+- A harmful option for definitions (`harmful()`, and `markHarmful(onSource, onTarget)` for marks) in the Java API and CraftTweaker. Without it, an entry is beneficial, except that a mark is harmful on the target's side.
+- The HUD draws buffs and debuffs as two groups, each with its own maximum and `+N`; debuffs come after a gap, below the buffs or above them at a bottom anchor.
+- A red border around harmful entries, and vanilla's potion frame behind potion effects; potion effects are harmful when vanilla marks them as bad.
+- The inventory tooltip of a harmful entry shows "Harmful".
+- Client settings `separateDebuffs`, `debuffBorder`, and `potionFrame`, all on by default.
+- `ClientEntry.harmful()` in the client view for addons.
+- The guides now document that other mods' attributes, such as Potion Core's, work in attribute contributions.
+
 ## [1.0.0] - 2026-10-27
 
 ### Added

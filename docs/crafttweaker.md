@@ -160,7 +160,7 @@ A mark links a source entity to a target entity, such as a player and the mob it
 | `maximumInactive(ticks)` | Ends the mark after this long inactive for any other reason (an unloaded participant). |
 | `contributeAttribute(side, ...)`, `contributeType(side, ...)` | Side `source` or `target`: who gets the contribution. |
 | `onApplied`, `onInactive`, `onActive`, `onRemoved`, `onInterval(ticks, ...)` | Callbacks. |
-| `presentation(...)` | How it shows; `markHud(onSource, onTarget)` picks whose HUD shows it. |
+| `presentation(...)` | How it shows; `markHud(onSource, onTarget)` picks whose HUD shows it, and `markHarmful(onSource, onTarget)` whether it is a debuff there. |
 
 **Changing and reading:**
 
@@ -192,7 +192,7 @@ if (<minecraft:feather>.matches(event.item) || <minecraft:sugar>.matches(event.i
 
 A contribution is a value that state adds to an entity while it lasts, kept in step with the state.
 
-- `contributeAttribute(attribute, operation, form, value)`: an attribute such as `generic.attackDamage`, `generic.maxHealth`, `generic.movementSpeed`, or `generic.armor`; operation `add`, `multiply_base`, or `multiply_total`.
+- `contributeAttribute(attribute, operation, form, value)`: an attribute such as `generic.attackDamage`, `generic.maxHealth`, `generic.movementSpeed`, or `generic.armor`; operation `add`, `multiply_base`, or `multiply_total`. Attributes from other mods work by their names. When the server starts, Statusworks checks each attribute name against a player and a zombie: an attribute that neither has is unknown, and its definition is disabled and named in the log (or the server stops when `strictMode` is on). So an attribute that a mod adds only to some other mobs, or only when an entity joins the world, cannot be used. [Potion Core](https://www.curseforge.com/minecraft/mc-mods/potion-core) 1.9's attributes all pass: `potioncore.jumpHeight`, `potioncore.damageResistance`, `potioncore.magicDamage`, `potioncore.magicShielding`, and `potioncore.projectileDamage` are on every living entity; `potioncore.stepHeight` and `potioncore.digSpeed` are on players only. An entity that does not have the attribute is skipped without an error.
 - `contributeType(typeId, form, value)`: a contribution type another mod registered through the Java API.
 - Form: `fixed` (the value) for every kind; `per_stack` (value times the stacks) for statuses; `per_amount` (value times the amount) and `per_fill` (value times the fill, 0 to 1) for pools. Marks take `fixed` only. Another form makes the definition invalid.
 - `Contributions.keys(entity, typeId)`, `value(entity, typeId, key)`, and `total(entity, typeId)` read the current values of a contribution type.
@@ -229,9 +229,11 @@ The context depends on the kind:
 
 - `name(text)` or `nameKey(langKey)`, `description(text)` or `descriptionKey(langKey)`.
 - `iconItem(itemId, meta)` or `iconTexture(resourceLocation)`.
-- `showCount(bool)`, `showAmount(bool)`, `showTime(bool)`, `decimals(n)` (for pool amounts), `priority(n)` (lower first on the HUD).
+- `showCount(bool)`, `showAmount(bool)`, `showTime(bool)`, `decimals(n)` (for pool amounts), `priority(n)` (lower first on the HUD; buffs and debuffs are separate groups by default, so priority orders entries inside each group).
 - `hidden()`: never on any HUD; players cannot reveal it.
 - `markHud(onSource, onTarget)`: for marks.
+- `harmful()`: the entry is a debuff: on the HUD it is drawn in the debuff group with a red border (by default), and its tooltip says "Harmful". Without it a status, pool, or cooldown is a buff; a mark is a buff on the source's side and a debuff on the target's side. For a mark, `harmful()` makes it harmful on both sides.
+- `markHarmful(onSource, onTarget)`: for marks, whether the mark is harmful on the source's HUD and on the target's HUD. The default is `false, true`: a hunt helps the hunter and harms the hunted. If you call both `harmful()` and `markHarmful`, the last call wins.
 - `particles(type)`, `particleColor(red, green, blue)` (for `reddust`, `mobSpell`, `mobSpellAmbient`), `particlesPerSecond(rate)` (above 0, at most 100, default 4), `particleAudience(audience)`, `particlesLongDistance()`. The audience is `nearby` (the default, and the only one for statuses and pools) or, for marks, `source`, `target`, or `both`. Cooldowns take no particles. Particle types are vanilla's names, such as `flame`, `heart`, `angryVillager`, `happyVillager`, `reddust`, or `mobSpell`.
 
 ## Operation results

@@ -18,9 +18,10 @@ Some things a pack or mod can build with Statusworks:
 ## For Players
 
 - A HUD at the top right shows each entry's icon, its stack count, its time, and a bar for pools. Your own potion effects show there too, so one place shows everything.
-- In the inventory, pointing at an entry explains it: what it does, its exact time, and who it came from.
+- Buffs and debuffs are separate groups: debuffs sit in their own group after a gap, with a red border, and potion effects sit on vanilla's potion frame, so you can tell them apart at a glance.
+- In the inventory, pointing at an entry explains it: what it does, its exact time, who it came from, and whether it is harmful.
 - Some entries show particles on mobs and players, to the players the pack chose.
-- Your settings in `config/statusworks-client.cfg`: move the HUD to any of nine screen positions, change its size and order, show names instead of icons, hide single entries, turn off particles, or keep vanilla's potion display. They change nothing in the game.
+- Your settings in `config/statusworks-client.cfg`: move the HUD to any of nine screen positions, change its size and order, show names instead of icons, hide single entries, turn off particles, show buffs and debuffs as one group, turn off the red borders or the potion frames, or keep vanilla's potion display. They change nothing in the game.
 
 ## For Pack Creators
 
@@ -49,7 +50,8 @@ events.onEntityLivingHurt(function(event as EntityLivingHurtEvent) {
 ```
 
 - Statuses, pools, marks, and cooldowns each have their own options: timers that are shared, decay one stack at a time, or run per application; stacks per source; pools that fill, drain, or move to a target; marks with target limits and distance; death rules.
-- They can add attribute bonuses, such as attack damage, max health, speed, or armor, that follow the stacks or the pool's fill.
+- They can add attribute bonuses, such as attack damage, max health, speed, or armor, that follow the stacks or the pool's fill. Attributes that other mods add to players or to all mobs work too, such as [Potion Core](https://www.curseforge.com/minecraft/mc-mods/potion-core)'s jump height and step height.
+- `.harmful()` makes an entry a debuff: it shows in the debuff group with a red border. By default a mark is a buff for the hunter and a debuff for the hunted.
 - Callbacks run when state is applied, changes, fills, empties, ends, or at an interval.
 - `/statusworks` inspects and changes state on any entity, lists every definition and its script file, and logs each change for testing.
 - Use the default script loader; scripts under `#loader preinit` are not supported.
