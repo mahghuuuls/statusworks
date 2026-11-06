@@ -36,8 +36,19 @@ final class EntryRows {
     private static final int BAR = 0xFF3FA9F5;
     /** The border around a harmful entry's icon. */
     private static final int HARMFUL_BORDER = 0xFFD0302A;
+    /** An icon's place: 16 by 16. */
+    private static final int ICON = 16;
+    /** The potion frame: one pixel around the icon's place, so it stays inside the cell. */
+    private static final int FRAME = ICON + 2;
     /** The width of the potion frame's outline and rim: two texels, drawn as two GUI pixels. */
     private static final int FRAME_EDGE = 2;
+    /**
+     * Where a framed potion icon starts, from the frame's corner: inside the outline and rim, plus one dark pixel,
+     * as vanilla keeps one dark pixel between its icon and the rim of its box.
+     */
+    private static final int FRAMED_ICON_INSET = FRAME_EDGE + 1;
+    /** A framed potion icon's size: the frame without its edge and the dark pixel on each side. */
+    private static final int FRAMED_ICON = FRAME - 2 * FRAMED_ICON_INSET;
 
     private final ClientSettings settings;
 
@@ -186,12 +197,19 @@ final class EntryRows {
                 colour);
     }
 
-    /** The icon with its frame and border, each as the player's settings say. */
+    /**
+     * The icon with its frame and border, each as the player's settings say. On the frame a potion icon is drawn
+     * smaller, inside the frame's edge with one dark pixel around it, as vanilla's box keeps around its icon.
+     */
     private void icon(Minecraft mc, ClientStore.Shown s, int x, int y) {
         if (s.potion != null && settings.potionFrame) {
-            potionFrame(mc, s.potion, x, y);
+            int frameX = x - (FRAME - ICON) / 2;
+            int frameY = y - (FRAME - ICON) / 2;
+            potionFrame(mc, s.potion, frameX, frameY);
+            potionIcon(mc, s.potion, frameX + FRAMED_ICON_INSET, frameY + FRAMED_ICON_INSET, FRAMED_ICON);
+        } else {
+            plainIcon(mc, s, x, y);
         }
-        plainIcon(mc, s, x, y);
         if (settings.debuffBorder && HudGroups.harmful(s)) {
             harmfulBorder(x, y);
         }
@@ -199,7 +217,7 @@ final class EntryRows {
 
     private void plainIcon(Minecraft mc, ClientStore.Shown s, int x, int y) {
         if (s.potion != null) {
-            potionIcon(mc, s.potion, x, y);
+            potionIcon(mc, s.potion, x, y, ICON);
             return;
         }
         HudDefinition row = s.row;
@@ -229,17 +247,17 @@ final class EntryRows {
     /**
      * A potion effect's icon as vanilla draws it on its HUD (the status icon, then the effect's own
      * {@code renderHUDEffect} for modded effects), without the background box: vanilla's 18 by 18 icon, which sits
-     * 3 pixels into its 24 by 24 box, is scaled to fill the 16 by 16 icon place, and a modded effect draws in the
-     * same box coordinates as on vanilla's HUD. The icon is drawn at depth 0 with the depth test off, like the small
-     * texts: Forge keeps the in-game HUD's depth at -90, and an inventory screen leaves the depth test on, so an icon
-     * drawn at the HUD's depth there is hidden behind the screen's dimmed background.
+     * 3 pixels into its 24 by 24 box, is scaled to {@code size} pixels square at {@code x}, {@code y}, and a modded
+     * effect draws in the same box coordinates as on vanilla's HUD. The icon is drawn at depth 0 with the depth test
+     * off, like the small texts: Forge keeps the in-game HUD's depth at -90, and an inventory screen leaves the depth
+     * test on, so an icon drawn at the HUD's depth there is hidden behind the screen's dimmed background.
      */
-    private static void potionIcon(Minecraft mc, PotionEffect effect, int x, int y) {
+    private static void potionIcon(Minecraft mc, PotionEffect effect, int x, int y, int size) {
         Potion potion = effect.getPotion();
         GlStateManager.disableDepth();
         GlStateManager.pushMatrix();
         GlStateManager.translate(x, y, 0);
-        GlStateManager.scale(16 / 18.0, 16 / 18.0, 1);
+        GlStateManager.scale(size / 18.0, size / 18.0, 1);
         GlStateManager.translate(-3, -3, 0);
         GlStateManager.color(1, 1, 1, 1);
         GlStateManager.enableAlpha();
@@ -261,7 +279,7 @@ final class EntryRows {
 
     /**
      * Vanilla's potion frame, the 24 by 24 box its HUD draws behind each effect (the ambient one for an ambient
-     * effect), fitted into 18 by 18 so it sits one pixel around the 16 by 16 icon and inside the cell. Its two-pixel
+     * effect), fitted into {@link #FRAME} by {@link #FRAME} with its corner at {@code x}, {@code y}. Its two-pixel
      * edge (outline and rim) is drawn at full size and only the inside is shrunk, so the edge looks the same on all
      * four sides. Drawn with the depth test off, like the potion icon.
      */
@@ -277,11 +295,11 @@ final class EntryRows {
         int v = 166;
         int[] from = {0, FRAME_EDGE, 24 - FRAME_EDGE};
         int[] fromSize = {FRAME_EDGE, 24 - 2 * FRAME_EDGE, FRAME_EDGE};
-        int[] to = {0, FRAME_EDGE, 18 - FRAME_EDGE};
-        int[] toSize = {FRAME_EDGE, 18 - 2 * FRAME_EDGE, FRAME_EDGE};
+        int[] to = {0, FRAME_EDGE, FRAME - FRAME_EDGE};
+        int[] toSize = {FRAME_EDGE, FRAME - 2 * FRAME_EDGE, FRAME_EDGE};
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 3; col++) {
-                Gui.drawScaledCustomSizeModalRect(x - 1 + to[col], y - 1 + to[row], u + from[col], v + from[row],
+                Gui.drawScaledCustomSizeModalRect(x + to[col], y + to[row], u + from[col], v + from[row],
                         fromSize[col], fromSize[row], toSize[col], toSize[row], 256, 256);
             }
         }
