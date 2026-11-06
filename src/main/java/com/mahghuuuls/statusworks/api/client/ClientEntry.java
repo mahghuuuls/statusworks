@@ -19,9 +19,17 @@ public final class ClientEntry {
     private final boolean active;
     @Nullable private final String other;
     private final boolean particles;
+    private final boolean harmful;
 
     public ClientEntry(String definitionId, String kind, String name, boolean nameIsKey, int count, double amount,
                        double capacity, int remaining, boolean active, @Nullable String other, boolean particles) {
+        // Kept so code built against the first release still links; such an entry is beneficial.
+        this(definitionId, kind, name, nameIsKey, count, amount, capacity, remaining, active, other, particles, false);
+    }
+
+    public ClientEntry(String definitionId, String kind, String name, boolean nameIsKey, int count, double amount,
+                       double capacity, int remaining, boolean active, @Nullable String other, boolean particles,
+                       boolean harmful) {
         this.definitionId = definitionId;
         this.kind = kind;
         this.name = name;
@@ -33,6 +41,7 @@ public final class ClientEntry {
         this.active = active;
         this.other = other;
         this.particles = particles;
+        this.harmful = harmful;
     }
 
     public String definitionId() {
@@ -89,5 +98,14 @@ public final class ClientEntry {
     /** Whether the definition has particles. */
     public boolean particles() {
         return particles;
+    }
+
+    /**
+     * Whether the entry is harmful (a debuff) rather than beneficial (a buff), as the author set it. A mark in the
+     * player's own entries uses the value of the player's side; a mark on another entity, in the nearby entries, is
+     * seen on its target and uses the target's value.
+     */
+    public boolean harmful() {
+        return harmful;
     }
 }

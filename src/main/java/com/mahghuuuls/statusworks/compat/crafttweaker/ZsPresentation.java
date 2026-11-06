@@ -104,6 +104,23 @@ public final class ZsPresentation {
         return this;
     }
 
+    /** Makes the entry harmful (a debuff) wherever it shows, for a mark on both HUDs. */
+    @ZenMethod
+    public ZsPresentation harmful() {
+        b.harmful();
+        return this;
+    }
+
+    /**
+     * For a mark: whether it is harmful on the source's HUD and on the target's HUD (default false, true). On a
+     * status, pool, or cooldown, {@code onSource} sets its value and {@code onTarget} has no use.
+     */
+    @ZenMethod
+    public ZsPresentation markHarmful(boolean onSource, boolean onTarget) {
+        b.markHarmful(onSource, onTarget);
+        return this;
+    }
+
     /** Turns particles on with a vanilla particle name, for example {@code mobSpell}. */
     @ZenMethod
     public ZsPresentation particles(String type) {

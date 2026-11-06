@@ -24,6 +24,9 @@ class HudLayoutTest {
         assertEquals(HudLayout.Anchor.TOP_RIGHT, HudLayout.DEFAULT_ANCHOR);
         assertTrue(ClientSettings.POTION_EFFECTS_DEFAULT);
         assertTrue(ClientSettings.HIDE_INVENTORY_EFFECTS_DEFAULT);
+        assertTrue(ClientSettings.SEPARATE_DEBUFFS_DEFAULT);
+        assertTrue(ClientSettings.DEBUFF_BORDER_DEFAULT);
+        assertTrue(ClientSettings.POTION_FRAME_DEFAULT);
     }
 
     @Test
@@ -142,5 +145,50 @@ class HudLayoutTest {
         assertNull(HudLayout.fromText(HudLayout.Anchor.class, null));
         assertArrayEquals(new String[]{"auto", "down", "up"}, HudLayout.texts(HudLayout.RowDirection.class));
         assertEquals("top_right", HudLayout.text(HudLayout.Anchor.TOP_RIGHT));
+    }
+
+    /** Buffs 60 wide and 40 high, debuffs 20 wide and 20 high, on a 400 by 300 screen, offset 4. */
+    private static int[][] stack(HudLayout.Anchor anchor) {
+        return HudLayout.groupOrigins(anchor, 400, 300, 4, 4, new int[]{60, 20}, new int[]{40, 20});
+    }
+
+    @Test
+    void theDebuffGroupIsBelowTheBuffsAtTopAndMiddleAnchorsAndAboveThemAtBottomAnchors() {
+        int gap = HudLayout.GROUP_GAP;
+        // Top: buffs from the edge, debuffs after the gap.
+        assertArrayEquals(new int[]{4, 4 + 40 + gap}, stack(HudLayout.Anchor.TOP_LEFT)[1]);
+        // Middle: the whole stack (66 high) is centered, offset 4 down; buffs first.
+        int middleTop = (300 - (40 + gap + 20)) / 2 + 4;
+        assertArrayEquals(new int[]{middleTop, middleTop + 40 + gap}, stack(HudLayout.Anchor.MIDDLE_RIGHT)[1]);
+        // Bottom: the buffs end at the edge, the debuffs above them after the gap.
+        int bottom = 300 - 4;
+        assertArrayEquals(new int[]{bottom - 40, bottom - 40 - gap - 20}, stack(HudLayout.Anchor.BOTTOM_CENTER)[1]);
+        for (HudLayout.Anchor anchor : HudLayout.Anchor.values()) {
+            int[] ys = stack(anchor)[1];
+            assertEquals(anchor.vertical > 0, ys[1] < ys[0], anchor.name());
+        }
+    }
+
+    @Test
+    void eachGroupSitsAtTheAnchorsSideOnItsOwnWidth() {
+        for (HudLayout.Anchor anchor : HudLayout.Anchor.values()) {
+            int[] xs = stack(anchor)[0];
+            if (anchor.horizontal < 0) {
+                assertArrayEquals(new int[]{4, 4}, xs, anchor.name());
+            } else if (anchor.horizontal > 0) {
+                assertArrayEquals(new int[]{400 - 4 - 60, 400 - 4 - 20}, xs, anchor.name());
+            } else {
+                assertArrayEquals(new int[]{(400 - 60) / 2 + 4, (400 - 20) / 2 + 4}, xs, anchor.name());
+            }
+        }
+    }
+
+    @Test
+    void aSingleGroupIsPlacedLikeOneBlock() {
+        for (HudLayout.Anchor anchor : HudLayout.Anchor.values()) {
+            int[][] at = HudLayout.groupOrigins(anchor, 400, 300, 4, 4, new int[]{60}, new int[]{40});
+            assertEquals(HudLayout.originX(anchor, 400, 4, 60), at[0][0], anchor.name());
+            assertEquals(HudLayout.originY(anchor, 300, 4, 40), at[1][0], anchor.name());
+        }
     }
 }

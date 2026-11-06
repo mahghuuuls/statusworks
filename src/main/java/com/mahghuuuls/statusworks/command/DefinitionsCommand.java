@@ -3,6 +3,7 @@ package com.mahghuuuls.statusworks.command;
 import com.mahghuuuls.statusworks.api.definition.MarkDefinition;
 import com.mahghuuuls.statusworks.api.definition.PoolDefinition;
 import com.mahghuuuls.statusworks.api.definition.PoolStart;
+import com.mahghuuuls.statusworks.api.definition.Presentation;
 import com.mahghuuuls.statusworks.api.definition.Progression;
 import com.mahghuuuls.statusworks.api.definition.StatusDefinition;
 import com.mahghuuuls.statusworks.core.definition.DefinitionRegistry;
@@ -49,7 +50,8 @@ final class DefinitionsCommand extends CommandBase {
                     + " duration=" + d.defaultDuration() + " mode=" + d.expiration().text()
                     + " refresh=" + d.refresh().text() + " ownership=" + d.ownership().text()
                     + (d.maximumRemaining() >= 1 ? " max=" + d.maximumRemaining() : "")
-                    + (d.refreshOnReject() ? "" : " refreshOnReject=false"));
+                    + (d.refreshOnReject() ? "" : " refreshOnReject=false")
+                    + (d.presentation().harmful() ? " harmful" : ""));
         }
         for (DefinitionRegistry.PoolEntry e : registry.pools()) {
             PoolDefinition d = e.definition();
@@ -64,7 +66,8 @@ final class DefinitionsCommand extends CommandBase {
                     + Numbers.format(d.rate()) : "")
                     + (d.lifetime() >= 1 ? " lifetime=" + d.lifetime() : "")
                     + (d.cutoff() >= 0 ? " cutoff=" + Numbers.format(d.cutoff()) : "")
-                    + " death=" + d.deathRule().text());
+                    + " death=" + d.deathRule().text()
+                    + (d.presentation().harmful() ? " harmful" : ""));
         }
         for (DefinitionRegistry.MarkEntry e : registry.marks()) {
             MarkDefinition d = e.definition();
@@ -78,14 +81,24 @@ final class DefinitionsCommand extends CommandBase {
                     + (d.maximumInactive() >= 1 ? " inactiveMax=" + d.maximumInactive() : "")
                     + (d.keepOnSourceDeath() ? " keepOnSourceDeath" : "")
                     + (d.keepOnTargetDeath() ? " keepOnTargetDeath" : "")
-                    + " contributions=" + d.sourceContributions().size() + "/" + d.targetContributions().size());
+                    + " contributions=" + d.sourceContributions().size() + "/" + d.targetContributions().size()
+                    + " harmful=" + harmfulSides(d.presentation()));
         }
         for (DefinitionRegistry.CooldownEntry e : registry.cooldowns()) {
             context.reply(sender, "  cooldown " + e.definition().id() + " origin=" + e.origin() + " duration="
-                    + e.definition().defaultDuration() + " death=" + e.definition().deathRule().text());
+                    + e.definition().defaultDuration() + " death=" + e.definition().deathRule().text()
+                    + (e.definition().presentation().harmful() ? " harmful" : ""));
         }
         for (DefinitionRegistry.Error error : registry.errors()) {
             context.reply(sender, "  invalid " + error);
         }
+    }
+
+    /** On which HUD a mark is harmful: {@code source}, {@code target}, {@code both}, or {@code none}. */
+    private static String harmfulSides(Presentation p) {
+        if (p.markHarmfulOnSource()) {
+            return p.markHarmfulOnTarget() ? "both" : "source";
+        }
+        return p.markHarmfulOnTarget() ? "target" : "none";
     }
 }

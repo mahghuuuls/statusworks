@@ -5,7 +5,8 @@ import java.util.Locale;
 
 /**
  * Where the HUD block sits and in which order its cells fill it: the anchor (nine screen positions), the offset from
- * it, the direction entries follow in a row, and the direction rows are added. Plain numbers only, so it is
+ * it, the direction entries follow in a row, the direction rows are added, and where each group of a stack (buffs,
+ * then debuffs) sits with the gap between them. Plain numbers only, so it is
  * unit-tested without the game; {@link HudRenderer} uses it for the grid and the named list alike, and
  * {@link ClientSettings} reads the setting texts through it.
  */
@@ -139,6 +140,34 @@ final class HudLayout {
     /** The top edge of the named list's {@code +N} line: under the rows, or above them upwards. */
     static int listMoreY(int y0, int count, int rowHeight, boolean upward) {
         return upward ? y0 : y0 + count * rowHeight;
+    }
+
+    /** Space between stacked groups. */
+    static final int GROUP_GAP = 6;
+
+    /**
+     * The left and top edge of each group of a stack in an area of this size: {@code x[i]} and {@code y[i]}. The
+     * stack as a whole is placed like one block of its total height, and each group is placed on its own width, so
+     * a narrower group still sits at the anchor's side (or centered). The first group is nearest the anchor's edge:
+     * at the top for a top or middle anchor, at the bottom for a bottom anchor, the next ones after it with
+     * {@link #GROUP_GAP} between them.
+     */
+    static int[][] groupOrigins(Anchor anchor, double areaWidth, double areaHeight, double offsetX, double offsetY,
+                                int[] widths, int[] heights) {
+        int total = Math.max(0, heights.length - 1) * GROUP_GAP;
+        for (int h : heights) {
+            total += h;
+        }
+        int[] xs = new int[widths.length];
+        int[] ys = new int[heights.length];
+        int y = originY(anchor, areaHeight, offsetY, total);
+        for (int k = 0; k < heights.length; k++) {
+            int i = anchor.vertical > 0 ? heights.length - 1 - k : k;
+            xs[i] = originX(anchor, areaWidth, offsetX, widths[i]);
+            ys[i] = y;
+            y += heights[i] + GROUP_GAP;
+        }
+        return new int[][]{xs, ys};
     }
 
     /** Whether the named list's rows end at the block's right edge, the icon outermost: right-side anchors. */

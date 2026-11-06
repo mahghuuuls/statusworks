@@ -20,7 +20,8 @@ import java.util.Map;
 
 /**
  * Draws entries: a grid cell (a 16 by 16 icon, the count on its corner, a pool's bar, the time under it) or a list
- * row (the icon and one line of text). Shared by the HUD and the inventory view.
+ * row (the icon and one line of text). Shared by the HUD and the inventory view. As the player's settings say, a
+ * potion effect sits on vanilla's potion frame and a harmful entry has a red border around its icon.
  */
 final class EntryRows {
 
@@ -33,9 +34,19 @@ final class EntryRows {
     private static final int TIME = 0xFFD24A;
     /** A pool's bar fill. */
     private static final int BAR = 0xFF3FA9F5;
+    /** The border around a harmful entry's icon. */
+    private static final int HARMFUL_BORDER = 0xFFD0302A;
+    /** The width of the potion frame's outline and rim: two texels, drawn as two GUI pixels. */
+    private static final int FRAME_EDGE = 2;
+
+    private final ClientSettings settings;
 
     /** Icon stacks by item id and metadata. */
     private final Map<String, ItemStack> items = new HashMap<>();
+
+    EntryRows(ClientSettings settings) {
+        this.settings = settings;
+    }
 
     /** The name, translated when the author gave a key. */
     static String name(HudDefinition row) {
@@ -175,7 +186,18 @@ final class EntryRows {
                 colour);
     }
 
+    /** The icon with its frame and border, each as the player's settings say. */
     private void icon(Minecraft mc, ClientStore.Shown s, int x, int y) {
+        if (s.potion != null && settings.potionFrame) {
+            potionFrame(mc, s.potion, x, y);
+        }
+        plainIcon(mc, s, x, y);
+        if (settings.debuffBorder && HudGroups.harmful(s)) {
+            harmfulBorder(x, y);
+        }
+    }
+
+    private void plainIcon(Minecraft mc, ClientStore.Shown s, int x, int y) {
         if (s.potion != null) {
             potionIcon(mc, s.potion, x, y);
             return;
@@ -234,6 +256,46 @@ final class EntryRows {
         GlStateManager.color(1, 1, 1, 1);
         GlStateManager.disableBlend();
         GlStateManager.popMatrix();
+        GlStateManager.enableDepth();
+    }
+
+    /**
+     * Vanilla's potion frame, the 24 by 24 box its HUD draws behind each effect (the ambient one for an ambient
+     * effect), fitted into 18 by 18 so it sits one pixel around the 16 by 16 icon and inside the cell. Its two-pixel
+     * edge (outline and rim) is drawn at full size and only the inside is shrunk, so the edge looks the same on all
+     * four sides. Drawn with the depth test off, like the potion icon.
+     */
+    private static void potionFrame(Minecraft mc, PotionEffect effect, int x, int y) {
+        GlStateManager.disableDepth();
+        GlStateManager.color(1, 1, 1, 1);
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA,
+                GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA, GlStateManager.SourceFactor.ONE,
+                GlStateManager.DestFactor.ZERO);
+        mc.getTextureManager().bindTexture(GuiContainer.INVENTORY_BACKGROUND);
+        int u = effect.getIsAmbient() ? 165 : 141;
+        int v = 166;
+        int[] from = {0, FRAME_EDGE, 24 - FRAME_EDGE};
+        int[] fromSize = {FRAME_EDGE, 24 - 2 * FRAME_EDGE, FRAME_EDGE};
+        int[] to = {0, FRAME_EDGE, 18 - FRAME_EDGE};
+        int[] toSize = {FRAME_EDGE, 18 - 2 * FRAME_EDGE, FRAME_EDGE};
+        for (int row = 0; row < 3; row++) {
+            for (int col = 0; col < 3; col++) {
+                Gui.drawScaledCustomSizeModalRect(x - 1 + to[col], y - 1 + to[row], u + from[col], v + from[row],
+                        fromSize[col], fromSize[row], toSize[col], toSize[row], 256, 256);
+            }
+        }
+        GlStateManager.disableBlend();
+        GlStateManager.enableDepth();
+    }
+
+    /** A one-pixel red border just outside the 16 by 16 icon. */
+    private static void harmfulBorder(int x, int y) {
+        GlStateManager.disableDepth();
+        Gui.drawRect(x - 1, y - 1, x + 17, y, HARMFUL_BORDER);
+        Gui.drawRect(x - 1, y + 16, x + 17, y + 17, HARMFUL_BORDER);
+        Gui.drawRect(x - 1, y, x, y + 16, HARMFUL_BORDER);
+        Gui.drawRect(x + 16, y, x + 17, y + 16, HARMFUL_BORDER);
         GlStateManager.enableDepth();
     }
 

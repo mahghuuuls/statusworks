@@ -10,5 +10,6 @@ statusworks.timer.potion=Timer: time until this potion effect ends.
 statusworks.detail.target=Target: %s
 statusworks.detail.source=Marked by: %s
 statusworks.detail.inactive=Inactive: the other one is not near or not loaded.
+statusworks.detail.harmful=Harmful
 statusworks.detail.nosource=No source
 statusworks.detail.group=%s: %s (%s)

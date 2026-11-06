@@ -69,7 +69,8 @@ public final class PresentationTable {
                 p.description(), p.descriptionIsKey(), p.iconItem(), p.iconMeta(), p.iconTexture(), p.showCount(),
                 p.showAmount(), p.showTime(), p.decimals(), p.priority(), limit, timerMode,
                 particles == null ? null : particles.type(), particles == null ? -1 : particles.color(),
-                particles == null ? 0 : (float) particles.perSecond(), particles != null && particles.longDistance());
+                particles == null ? 0 : (float) particles.perSecond(), particles != null && particles.longDistance(),
+                p.harmful(), p.markHarmfulOnTarget());
         rows.add(row);
         byId.put(id, row);
         if (particles != null) {

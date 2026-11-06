@@ -5,11 +5,13 @@ import javax.annotation.Nullable;
 /**
  * How a definition looks on the players' HUD and detail view: whether it is shown at all, its name and
  * description (plain text or translation keys), its icon, which fields it shows, how many decimals a pool amount
- * has, its order, and for a mark on whose HUD it appears. Presentation never changes gameplay.
+ * has, its order, for a mark on whose HUD it appears, and whether it is beneficial or harmful. Presentation never
+ * changes gameplay.
  *
  * <p>Build one with {@link #builder()} and give it to a definition builder's {@code presentation(...)}. A
  * definition without one uses {@link #DEFAULT}: shown, named by its id's path, the generic icon, every field, 0
- * decimals, priority 0, for a mark the source's HUD only, and no particles.</p>
+ * decimals, priority 0, and no particles. Its entries are beneficial; a mark shows on the source's HUD only, as
+ * beneficial there and harmful on the target's HUD when the author shows it there too.</p>
  */
 public final class Presentation {
 
@@ -31,6 +33,8 @@ public final class Presentation {
     private final int priority;
     private final boolean markOnSource;
     private final boolean markOnTarget;
+    private final boolean harmful;
+    private final boolean harmfulOnTarget;
     @Nullable private final Particles particles;
 
     private Presentation(Builder b) {
@@ -49,6 +53,8 @@ public final class Presentation {
         this.priority = b.priority;
         this.markOnSource = b.markOnSource;
         this.markOnTarget = b.markOnTarget;
+        this.harmful = b.harmful;
+        this.harmfulOnTarget = b.harmfulOnTarget;
         this.particles = b.particles;
     }
 
@@ -132,6 +138,24 @@ public final class Presentation {
         return markOnTarget;
     }
 
+    /**
+     * Whether a status's, pool's, or cooldown's entries are harmful (a debuff) rather than beneficial (a buff);
+     * default false. For a mark this is its value on the source's HUD, the same as {@link #markHarmfulOnSource()}.
+     */
+    public boolean harmful() {
+        return harmful;
+    }
+
+    /** For a mark: whether it is harmful on the source's HUD (default false). */
+    public boolean markHarmfulOnSource() {
+        return harmful;
+    }
+
+    /** For a mark: whether it is harmful on the target's HUD (default true). */
+    public boolean markHarmfulOnTarget() {
+        return harmfulOnTarget;
+    }
+
     /** The particles, or null for none. A hidden definition shows no particles either: nothing about it is sent. */
     @Nullable
     public Particles particles() {
@@ -154,6 +178,8 @@ public final class Presentation {
         private int priority;
         private boolean markOnSource = true;
         private boolean markOnTarget;
+        private boolean harmful;
+        private boolean harmfulOnTarget = true;
         private Particles particles;
 
         private Builder() {
@@ -235,6 +261,23 @@ public final class Presentation {
         public Builder markHud(boolean onSource, boolean onTarget) {
             this.markOnSource = onSource;
             this.markOnTarget = onTarget;
+            return this;
+        }
+
+        /** Makes the entry harmful (a debuff) wherever it shows, for a mark on both HUDs. */
+        public Builder harmful() {
+            this.harmful = true;
+            this.harmfulOnTarget = true;
+            return this;
+        }
+
+        /**
+         * For a mark: whether it is harmful on the source's HUD and on the target's HUD (default false, true). On a
+         * status, pool, or cooldown, {@code onSource} sets its value and {@code onTarget} has no use.
+         */
+        public Builder markHarmful(boolean onSource, boolean onTarget) {
+            this.harmful = onSource;
+            this.harmfulOnTarget = onTarget;
             return this;
         }
 

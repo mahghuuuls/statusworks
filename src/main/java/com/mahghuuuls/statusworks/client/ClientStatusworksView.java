@@ -38,7 +38,8 @@ final class ClientStatusworksView implements StatusworksClientView {
         for (ClientStore.Shown s : shown) {
             HudDefinition row = s.row;
             out.add(new ClientEntry(row.id, kind(row.kind), row.name, row.nameIsKey, s.entry.count, s.entry.amount,
-                    s.entry.capacity, s.remaining, s.entry.active, s.entry.other, row.particleType != null));
+                    s.entry.capacity, s.remaining, s.entry.active, s.entry.other, row.particleType != null,
+                    HudGroups.harmful(s)));
         }
         return Collections.unmodifiableList(out);
     }

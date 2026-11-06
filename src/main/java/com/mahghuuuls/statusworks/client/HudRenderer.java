@@ -20,7 +20,9 @@ import java.util.List;
  * list of rows with names. The anchor, offset, entry and row directions ({@link HudLayout}), scale, maximum, icons
  * per row, and text size come from the client settings; entries over the maximum show as {@code +N}. With the potion
  * setting on (the default), the player's own potion effects follow the Statusworks entries, and vanilla's potion
- * icons at the top right are not drawn.
+ * icons at the top right are not drawn. By default buffs and debuffs are drawn as two groups ({@link HudGroups}),
+ * each with its own maximum, the debuffs after a gap: below the buffs at a top or middle anchor, above them at a
+ * bottom anchor.
  *
  * <p>With the inventory open, the inventory view draws the same layout at full brightness and explains the entry
  * under the pointer, so the overlay skips its own, darkened copy.</p>
@@ -56,12 +58,13 @@ public final class HudRenderer {
     private final ClientStore store;
     private final ClientSettings settings;
     private final PotionEntries potions;
-    private final EntryRows rows = new EntryRows();
+    private final EntryRows rows;
 
     HudRenderer(ClientStore store, ClientSettings settings) {
         this.store = store;
         this.settings = settings;
         this.potions = new PotionEntries(settings);
+        this.rows = new EntryRows(settings);
     }
 
     /** With the player's potion effects on this HUD, vanilla's own icons at the top right are not drawn. */
@@ -105,33 +108,45 @@ public final class HudRenderer {
         }
         List<ClientStore.Shown> all = store.shown();
         all.addAll(potions.shown(mc));
-        if (all.isEmpty()) {
+        List<HudGroups.Group> groups = HudGroups.groups(all, settings.maxEntries, settings.separateDebuffs);
+        if (groups.isEmpty()) {
             return hits;
         }
-        int count = HudText.shown(all.size(), settings.maxEntries);
-        List<ClientStore.Shown> drawn = all.subList(0, count);
-        List<ClientStore.Shown> rest = all.subList(count, all.size());
-        String more = HudText.more(all.size(), settings.maxEntries);
         double scale = settings.scale;
         GlStateManager.pushMatrix();
         GlStateManager.scale(scale, scale, 1);
         EntryRows.prepareState();
         if (settings.showNames) {
-            drawList(mc, screenWidth, screenHeight, drawn, rest, more, scale, hits);
+            drawLists(mc, screenWidth, screenHeight, groups, scale, hits);
         } else {
-            drawGrid(mc, screenWidth, screenHeight, drawn, rest, more, scale, hits);
+            drawGrids(mc, screenWidth, screenHeight, groups, scale, hits);
         }
         EntryRows.restoreState();
         GlStateManager.popMatrix();
         return hits;
     }
 
-    private void drawList(Minecraft mc, int screenWidth, int screenHeight, List<ClientStore.Shown> drawn,
-                          List<ClientStore.Shown> rest, String more, double scale, List<Hit> hits) {
-        int width = Math.max(EntryRows.width(mc, drawn), EntryRows.TEXT_X + mc.fontRenderer.getStringWidth(more));
-        int height = drawn.size() * EntryRows.ROW_HEIGHT + (more.isEmpty() ? 0 : 10);
-        int x = originX(screenWidth, scale, width);
-        int y = originY(screenHeight, scale, height);
+    /** Each group as a named list, the groups stacked from the anchor's edge with a gap between them. */
+    private void drawLists(Minecraft mc, int screenWidth, int screenHeight, List<HudGroups.Group> groups,
+                           double scale, List<Hit> hits) {
+        int[] widths = new int[groups.size()];
+        int[] heights = new int[groups.size()];
+        for (int g = 0; g < groups.size(); g++) {
+            HudGroups.Group group = groups.get(g);
+            widths[g] = Math.max(EntryRows.width(mc, group.drawn),
+                    EntryRows.TEXT_X + mc.fontRenderer.getStringWidth(group.more));
+            heights[g] = group.drawn.size() * EntryRows.ROW_HEIGHT + (group.more.isEmpty() ? 0 : 10);
+        }
+        int[][] at = origins(screenWidth, screenHeight, scale, widths, heights);
+        for (int g = 0; g < groups.size(); g++) {
+            drawList(mc, groups.get(g), at[0][g], at[1][g], widths[g], scale, hits);
+        }
+    }
+
+    private void drawList(Minecraft mc, HudGroups.Group group, int x, int y, int width, double scale,
+                          List<Hit> hits) {
+        List<ClientStore.Shown> drawn = group.drawn;
+        String more = group.more;
         boolean upward = HudLayout.upward(settings.anchor, settings.rowDirection);
         // At a right-side anchor each row ends at the right edge with its icon outermost, so a text that changes
         // width never moves the icons.
@@ -151,34 +166,56 @@ public final class HudRenderer {
             int moreX = fromRight ? x + width - EntryRows.TEXT_X - mc.fontRenderer.getStringWidth(more)
                     : x + EntryRows.TEXT_X;
             mc.fontRenderer.drawStringWithShadow(more, moreX, moreY, 0xFFFFFF);
-            hits.add(hit(x, moreY, width, 10, scale, null, rest));
+            hits.add(hit(x, moreY, width, 10, scale, null, group.rest));
         }
     }
 
-    private void drawGrid(Minecraft mc, int screenWidth, int screenHeight, List<ClientStore.Shown> drawn,
-                          List<ClientStore.Shown> rest, String more, double scale, List<Hit> hits) {
-        double textScale = settings.textScale;
-        EntryRows.Style style = new EntryRows.Style(textScale, settings.shortTime);
-        int cellWidth = EntryRows.cellWidth(mc, drawn, more, style);
-        int cellHeight = EntryRows.cellHeight(drawn, style);
-        int cells = drawn.size() + (more.isEmpty() ? 0 : 1);
+    /** Each group as an icon grid with one cell size for all, the groups stacked like the lists. */
+    private void drawGrids(Minecraft mc, int screenWidth, int screenHeight, List<HudGroups.Group> groups,
+                           double scale, List<Hit> hits) {
+        EntryRows.Style style = new EntryRows.Style(settings.textScale, settings.shortTime);
+        int cellWidth = 0;
+        int cellHeight = 0;
+        for (HudGroups.Group group : groups) {
+            cellWidth = Math.max(cellWidth, EntryRows.cellWidth(mc, group.drawn, group.more, style));
+            cellHeight = Math.max(cellHeight, EntryRows.cellHeight(group.drawn, style));
+        }
+        int perRow = Math.max(1, settings.iconsPerRow);
+        int[] widths = new int[groups.size()];
+        int[] heights = new int[groups.size()];
+        for (int g = 0; g < groups.size(); g++) {
+            int cells = cells(groups.get(g));
+            widths[g] = HudLayout.gridColumns(cells, perRow) * cellWidth;
+            heights[g] = HudLayout.gridRows(cells, perRow) * cellHeight;
+        }
+        int[][] at = origins(screenWidth, screenHeight, scale, widths, heights);
+        for (int g = 0; g < groups.size(); g++) {
+            drawGrid(mc, groups.get(g), at[0][g], at[1][g], cellWidth, cellHeight, style, scale, hits);
+        }
+    }
+
+    private static int cells(HudGroups.Group group) {
+        return group.drawn.size() + (group.more.isEmpty() ? 0 : 1);
+    }
+
+    private void drawGrid(Minecraft mc, HudGroups.Group group, int x0, int y0, int cellWidth, int cellHeight,
+                          EntryRows.Style style, double scale, List<Hit> hits) {
+        int cells = cells(group);
         int perRow = Math.max(1, settings.iconsPerRow);
         int columns = HudLayout.gridColumns(cells, perRow);
         int gridRows = HudLayout.gridRows(cells, perRow);
-        int x0 = originX(screenWidth, scale, columns * cellWidth);
-        int y0 = originY(screenHeight, scale, gridRows * cellHeight);
         boolean rightToLeft = HudLayout.rightToLeft(settings.anchor, settings.entryDirection);
         boolean upward = HudLayout.upward(settings.anchor, settings.rowDirection);
         for (int i = 0; i < cells; i++) {
             // By default the first cell sits at the anchor's side and edge, and the grid grows away from them.
             int x = HudLayout.cellX(x0, i, perRow, columns, cellWidth, rightToLeft);
             int y = HudLayout.cellY(y0, i, perRow, gridRows, cellHeight, upward);
-            if (i < drawn.size()) {
-                rows.drawCell(mc, drawn.get(i), x, y, cellWidth, style);
-                hits.add(hit(x, y, cellWidth, cellHeight, scale, drawn.get(i), Collections.emptyList()));
+            if (i < group.drawn.size()) {
+                rows.drawCell(mc, group.drawn.get(i), x, y, cellWidth, style);
+                hits.add(hit(x, y, cellWidth, cellHeight, scale, group.drawn.get(i), Collections.emptyList()));
             } else {
-                EntryRows.drawSmall(mc, more, x + cellWidth / 2.0, y + 4, textScale * 1.25, 0xFFFFFF);
-                hits.add(hit(x, y, cellWidth, cellHeight, scale, null, rest));
+                EntryRows.drawSmall(mc, group.more, x + cellWidth / 2.0, y + 4, settings.textScale * 1.25, 0xFFFFFF);
+                hits.add(hit(x, y, cellWidth, cellHeight, scale, null, group.rest));
             }
         }
     }
@@ -189,11 +226,8 @@ public final class HudRenderer {
                 (int) Math.ceil(height * scale), shown, rest);
     }
 
-    private int originX(int screenWidth, double scale, int width) {
-        return HudLayout.originX(settings.anchor, screenWidth / scale, settings.offsetX / scale, width);
-    }
-
-    private int originY(int screenHeight, double scale, int height) {
-        return HudLayout.originY(settings.anchor, screenHeight / scale, settings.offsetY / scale, height);
+    private int[][] origins(int screenWidth, int screenHeight, double scale, int[] widths, int[] heights) {
+        return HudLayout.groupOrigins(settings.anchor, screenWidth / scale, screenHeight / scale,
+                settings.offsetX / scale, settings.offsetY / scale, widths, heights);
     }
 }

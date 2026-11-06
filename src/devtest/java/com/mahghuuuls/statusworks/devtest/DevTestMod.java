@@ -245,6 +245,16 @@ public class DevTestMod {
         registerMark(loggedMark(MarkDefinition.builder(id("mboth"))).noDuration()
                 .presentation(Presentation.builder().name("Linked").iconItem("minecraft:lead", 0).markHud(true, true)
                         .build()).build());
+        // Buff and debuff groups: a harmful status, a harmful pool, and a mark harmful on its source's HUD.
+        register(logged(StatusDefinition.builder(id("bleed"))).limit(3).defaultDuration(36000)
+                .presentation(Presentation.builder().name("Bleed").description("Test debuff: does nothing; it is marked harmful.")
+                        .iconItem("minecraft:fermented_spider_eye", 0).harmful().build()).build());
+        registerPool(loggedPool(PoolDefinition.builder(id("pdrain"))).capacity(10)
+                .presentation(Presentation.builder().name("Drain").iconItem("minecraft:rotten_flesh", 0).harmful()
+                        .build()).build());
+        registerMark(loggedMark(MarkDefinition.builder(id("mcurse"))).defaultDuration(36000)
+                .presentation(Presentation.builder().name("Curse").iconItem("minecraft:skull", 1).harmful().build())
+                .build());
         for (String filler : new String[]{"fill1", "fill2", "fill3"}) {
             register(StatusDefinition.builder(id(filler)).defaultDuration(6000)
                     .presentation(Presentation.builder().priority(9).build()).build());

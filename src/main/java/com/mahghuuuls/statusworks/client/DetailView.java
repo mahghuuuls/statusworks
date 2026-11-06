@@ -96,6 +96,9 @@ public final class DetailView {
         HudDefinition row = s.row;
         List<String> lines = new ArrayList<>();
         lines.add(EntryRows.title(s));
+        if (HudGroups.harmful(s)) {
+            lines.add("§c" + I18n.format("statusworks.detail.harmful"));
+        }
         if (row.description != null) {
             lines.add("§7" + (row.descriptionIsKey ? I18n.format(row.description) : row.description));
         }

@@ -34,7 +34,7 @@ final class DevTestClientView {
         }
         StringBuilder own = new StringBuilder();
         for (ClientEntry e : view.ownEntries()) {
-            own.append(e.definitionId()).append(',');
+            own.append(e.definitionId()).append(e.harmful() ? "(harmful)" : "").append(',');
         }
         StringBuilder nearby = new StringBuilder();
         StringBuilder times = new StringBuilder();
@@ -43,7 +43,8 @@ final class DevTestClientView {
             nearby.append(entity == null ? "#" + e.getKey() : entity.getName() + "#" + e.getKey()).append('[');
             for (ClientEntry c : e.getValue()) {
                 nearby.append(c.definitionId()).append(" count=").append(c.count()).append(" amount=")
-                        .append(c.amount()).append(" particles=").append(c.particles()).append(';');
+                        .append(c.amount()).append(" particles=").append(c.particles())
+                        .append(" harmful=").append(c.harmful()).append(';');
                 times.append(c.definitionId()).append('=').append(c.remaining() < 0 ? "none"
                         : (c.remaining() + 19) / 20 + "s").append(' ');
             }

@@ -14,7 +14,8 @@ import java.util.Set;
  * The player's own display settings in {@code config/statusworks-client.cfg}: HUD on or off, anchor, offset, the
  * entry and row directions, scale, maximum entries, hidden entries by definition id (or a potion effect's registry
  * id), the icon grid (icons per row, small-text size, short times) or a list with names, the player's potion effects
- * on the HUD (and vanilla's inventory effect list hidden), and particles on or off. Saved on the client only and
+ * on the HUD (and vanilla's inventory effect list hidden), buffs and debuffs in separate groups, a red border on
+ * debuffs, vanilla's frame behind potion effects, and particles on or off. Saved on the client only and
  * never sent to the server, so they change what this player sees and nothing else. Read at start and again each
  * time the player joins a server.
  */
@@ -24,6 +25,10 @@ public final class ClientSettings {
     static final boolean POTION_EFFECTS_DEFAULT = true;
     /** With the potion effects on this HUD, vanilla's list beside the inventories is not drawn either. */
     static final boolean HIDE_INVENTORY_EFFECTS_DEFAULT = true;
+    /** Buffs at the anchor and debuffs in their own group after a gap, each with its own maximum. */
+    static final boolean SEPARATE_DEBUFFS_DEFAULT = true;
+    static final boolean DEBUFF_BORDER_DEFAULT = true;
+    static final boolean POTION_FRAME_DEFAULT = true;
 
     private final Configuration file;
     private final Logger logger;
@@ -43,6 +48,9 @@ public final class ClientSettings {
     volatile boolean shortTime = true;
     volatile boolean potionEffects = POTION_EFFECTS_DEFAULT;
     volatile boolean hideInventoryEffects = HIDE_INVENTORY_EFFECTS_DEFAULT;
+    volatile boolean separateDebuffs = SEPARATE_DEBUFFS_DEFAULT;
+    volatile boolean debuffBorder = DEBUFF_BORDER_DEFAULT;
+    volatile boolean potionFrame = POTION_FRAME_DEFAULT;
 
     public ClientSettings(File path, Logger logger) {
         this.file = new Configuration(path);
@@ -83,6 +91,13 @@ public final class ClientSettings {
         hideInventoryEffects = file.getBoolean("hideInventoryEffects", "hud", HIDE_INVENTORY_EFFECTS_DEFAULT, "While"
                 + " this HUD and potionEffects are on, also hide vanilla's effect list beside the survival and creative"
                 + " inventories and keep them centered, so this HUD is the only place the effects show.");
+        separateDebuffs = file.getBoolean("separateDebuffs", "hud", SEPARATE_DEBUFFS_DEFAULT, "Draw harmful entries"
+                + " (debuffs) as their own group after a gap: below the others at a top or middle anchor, above them at"
+                + " a bottom anchor. The maximum, +N, and icons per row then apply to each group.");
+        debuffBorder = file.getBoolean("debuffBorder", "hud", DEBUFF_BORDER_DEFAULT, "Draw a red border around the"
+                + " icon of each harmful entry.");
+        potionFrame = file.getBoolean("potionFrame", "hud", POTION_FRAME_DEFAULT, "Draw vanilla's potion frame"
+                + " behind each potion effect, so potion effects look different from Statusworks entries.");
         hidden = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(file.getStringList("hiddenEntries", "hud",
                 new String[0], "Definition ids, or potion effect ids such as minecraft:speed, this player does not want"
                 + " to see. Hiding changes nothing in the game."))));

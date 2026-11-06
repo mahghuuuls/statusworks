@@ -61,10 +61,10 @@ dependencies {
         runtimeOnly 'CraftTweaker2:CraftTweaker2-MC1120-Main:1.12-4.1.20.716'
     }
 
-    // Agent Diagnostics Toolkit 1.2.0: development runtime only. Never compile scope, never
+    // Agent Diagnostics Toolkit 1.6.0: development runtime only. Never compile scope, never
     // shaded, never declared in mod metadata. The jar is ignored by Git (libs/).
-    if (file('libs/agenttesttoolkit-1.2.0.jar').exists()) {
-        runtimeOnly rfg.deobf(files('libs/agenttesttoolkit-1.2.0.jar'))
+    if (file('libs/agenttesttoolkit-1.6.0.jar').exists()) {
+        runtimeOnly rfg.deobf(files('libs/agenttesttoolkit-1.6.0.jar'))
     }
 }
 

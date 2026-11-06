@@ -46,20 +46,25 @@ public final class HudDefinition {
     public final float particlesPerSecond;
     /** Whether the particles show beyond 32 blocks, as far as the client has the entity. */
     public final boolean particlesFar;
+    /** Whether the definition's entries are harmful; for a mark, on the source's HUD. */
+    public final boolean harmful;
+    /** For a mark: whether it is harmful on the target's HUD. */
+    public final boolean harmfulOnTarget;
 
     public HudDefinition(int index, String id, byte kind, String name, boolean nameIsKey, @Nullable String description,
                          boolean descriptionIsKey, @Nullable String iconItem, int iconMeta,
                          @Nullable String iconTexture, boolean showCount, boolean showAmount, boolean showTime,
                          int decimals, int priority, int limit, String timerMode) {
         this(index, id, kind, name, nameIsKey, description, descriptionIsKey, iconItem, iconMeta, iconTexture,
-                showCount, showAmount, showTime, decimals, priority, limit, timerMode, null, -1, 0, false);
+                showCount, showAmount, showTime, decimals, priority, limit, timerMode, null, -1, 0, false, false, true);
     }
 
     public HudDefinition(int index, String id, byte kind, String name, boolean nameIsKey, @Nullable String description,
                          boolean descriptionIsKey, @Nullable String iconItem, int iconMeta,
                          @Nullable String iconTexture, boolean showCount, boolean showAmount, boolean showTime,
                          int decimals, int priority, int limit, String timerMode, @Nullable String particleType,
-                         int particleColor, float particlesPerSecond, boolean particlesFar) {
+                         int particleColor, float particlesPerSecond, boolean particlesFar, boolean harmful,
+                         boolean harmfulOnTarget) {
         this.index = index;
         this.id = id;
         this.kind = kind;
@@ -81,6 +86,8 @@ public final class HudDefinition {
         this.particleColor = particleColor;
         this.particlesPerSecond = particlesPerSecond;
         this.particlesFar = particlesFar;
+        this.harmful = harmful;
+        this.harmfulOnTarget = harmfulOnTarget;
     }
 
     void write(ByteBuf buf) {
@@ -94,7 +101,8 @@ public final class HudDefinition {
         writeOptional(buf, iconItem);
         ByteBufUtils.writeVarInt(buf, iconMeta, 5);
         writeOptional(buf, iconTexture);
-        buf.writeByte((showCount ? 1 : 0) | (showAmount ? 2 : 0) | (showTime ? 4 : 0));
+        buf.writeByte((showCount ? 1 : 0) | (showAmount ? 2 : 0) | (showTime ? 4 : 0) | (harmful ? 8 : 0)
+                | (harmfulOnTarget ? 16 : 0));
         buf.writeByte(decimals);
         buf.writeInt(priority);
         ByteBufUtils.writeVarInt(buf, limit, 5);
@@ -134,7 +142,8 @@ public final class HudDefinition {
         }
         return new HudDefinition(index, id, kind, name, nameIsKey, description, descriptionIsKey, iconItem, iconMeta,
                 iconTexture, (flags & 1) != 0, (flags & 2) != 0, (flags & 4) != 0, decimals, priority, limit,
-                timerMode, particleType, particleColor, particlesPerSecond, particlesFar);
+                timerMode, particleType, particleColor, particlesPerSecond, particlesFar, (flags & 8) != 0,
+                (flags & 16) != 0);
     }
 
     static void writeOptional(ByteBuf buf, @Nullable String text) {
