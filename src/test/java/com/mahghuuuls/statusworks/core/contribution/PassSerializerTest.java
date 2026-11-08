@@ -46,6 +46,55 @@ class PassSerializerTest {
     }
 
     @Test
+    void passesDeferredDuringATickWaitForTheNextTickEvenWhenTheTickEndRunsDeferredPasses() {
+        // A chain started before the tick's end (a world tick, a command) runs 8 passes; its remaining passes run at
+        // the next tick's end, not at this tick's end.
+        int[] runs = {0};
+        Runnable[] loop = new Runnable[1];
+        loop[0] = () -> {
+            runs[0]++;
+            passes.request("a", loop[0], loop[0]);
+        };
+        passes.nextTick();
+        passes.request("a", loop[0], loop[0]);
+        assertEquals(8, runs[0]);
+        passes.runDeferred(e -> true);
+        assertEquals(8, runs[0], "the end of the same tick runs nothing deferred during it");
+        assertTrue(passes.isDeferred("a"));
+        passes.nextTick();
+        passes.runDeferred(e -> true);
+        assertEquals(16, runs[0], "the next tick's end runs the next 8");
+        passes.runDeferred(e -> true);
+        assertEquals(16, runs[0], "passes deferred by the deferred chain wait for the tick after");
+        passes.nextTick();
+        passes.runDeferred(e -> true);
+        assertEquals(24, runs[0]);
+    }
+
+    @Test
+    void theTickEndRunsOnlyWhatWasDeferredInAnEarlierTick() {
+        int[] runs = {0, 0};
+        Runnable[] loopA = new Runnable[1];
+        Runnable[] loopB = new Runnable[1];
+        loopA[0] = () -> {
+            runs[0]++;
+            passes.request("a", loopA[0], loopA[0]);
+        };
+        loopB[0] = () -> {
+            runs[1]++;
+            passes.request("b", loopB[0], loopB[0]);
+        };
+        passes.nextTick();
+        passes.request("a", loopA[0], loopA[0]);
+        passes.nextTick();
+        passes.request("b", loopB[0], loopB[0]);
+        passes.runDeferred(e -> true);
+        assertEquals(16, runs[0], "a was deferred in the earlier tick and runs");
+        assertEquals(8, runs[1], "b was deferred in this tick and waits");
+        assertTrue(passes.isDeferred("b"));
+    }
+
+    @Test
     void eightPassesRunInARowThenTheNextWaitsForTheNextTick() {
         int[] runs = {0};
         Runnable[] loop = new Runnable[1];
@@ -57,6 +106,8 @@ class PassSerializerTest {
         assertEquals(PassSerializer.MAX_PASSES_IN_A_ROW, runs[0]);
         assertEquals(Arrays.asList("a"), limits);
         assertTrue(passes.isDeferred("a"));
+
+        passes.nextTick();
 
         passes.runDeferred(e -> true);
         assertEquals(2 * PassSerializer.MAX_PASSES_IN_A_ROW, runs[0], "the next tick runs a new chain of 8");
@@ -72,6 +123,7 @@ class PassSerializerTest {
             passes.request("a", loop[0], loop[0]);
         };
         passes.request("a", loop[0], loop[0]);
+        passes.nextTick();
         passes.runDeferred(e -> false);
         assertEquals(PassSerializer.MAX_PASSES_IN_A_ROW, runs[0]);
         assertFalse(passes.isDeferred("a"));
@@ -124,6 +176,7 @@ class PassSerializerTest {
         // A new outside request before the tick runs now and still keeps the waiting join unit.
         passes.request("a", () -> order.add("new pass"), () -> order.add("plain"));
         assertEquals(Arrays.asList("new pass", "join unit"), order);
+        passes.nextTick();
         passes.runDeferred(e -> true);
         assertEquals(Arrays.asList("new pass", "join unit"), order, "the join unit ran once");
     }
@@ -145,6 +198,7 @@ class PassSerializerTest {
             }
         };
         passes.request("a", loop[0], loop[0]);
+        passes.nextTick();
         passes.runDeferred(e -> true);
         assertEquals(Arrays.asList("join unit", "plain"), order,
                 "the deferred unit runs once as itself; a pass it requests is the plain pass");
@@ -158,6 +212,7 @@ class PassSerializerTest {
             throw new IllegalStateException("test");
         }, () -> order.add("plain")));
         assertTrue(passes.isDeferred("a"));
+        passes.nextTick();
         passes.runDeferred(e -> true);
         assertEquals(Arrays.asList("join unit"), order);
     }

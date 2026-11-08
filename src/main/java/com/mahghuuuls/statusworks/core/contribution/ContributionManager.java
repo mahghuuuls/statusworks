@@ -145,7 +145,12 @@ public final class ContributionManager implements ContributionService {
         passes.request(entity, () -> pass(entity, state, verify), () -> pass(entity, state, false));
     }
 
-    /** Runs the passes that waited for this tick because an entity reached the pass limit. */
+    /** Called when a server tick starts, before any world ticks: passes deferred until now may run at its end. */
+    public void beginServerTick() {
+        passes.nextTick();
+    }
+
+    /** Runs the passes that waited since an earlier tick because an entity reached the pass limit. */
     public void runDeferredPasses() {
         passes.runDeferred(ContributionManager::stillHere);
     }

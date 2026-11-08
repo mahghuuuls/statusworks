@@ -129,6 +129,18 @@ public final class TickDriver {
         timings.add(System.nanoTime() - start);
     }
 
+    /**
+     * First at each server tick's start, so passes deferred during this tick wait for the next one. Another mod's
+     * highest-priority tick-start handler registered earlier still runs before it; passes it defers count as deferred
+     * in the previous tick.
+     */
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public void onServerTickStart(TickEvent.ServerTickEvent event) {
+        if (event.phase == TickEvent.Phase.START) {
+            contributions.beginServerTick();
+        }
+    }
+
     @SubscribeEvent
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {

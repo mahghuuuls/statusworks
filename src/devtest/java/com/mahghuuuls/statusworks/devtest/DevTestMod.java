@@ -188,20 +188,24 @@ public class DevTestMod {
                 .contribute(Contribution.type(id("living"), ValueForm.PER_STACK, 1)).build());
         register(StatusDefinition.builder(id("loopstatus")).limit(3).expiration(ExpirationMode.NONE)
                 .contribute(Contribution.type(id("loop"), ValueForm.PER_STACK, 1)).build());
-        // A chain of callbacks whose ninth, at depth 8, removes powerstatus: its end notice must still arrive.
+        // A chain of callbacks whose ninth, at depth 8, removes powerstatus and groupedstatus: the end notice and the
+        // grouped pair with an empty group must still arrive.
         register(StatusDefinition.builder(id("deepchain")).limit(20).expiration(ExpirationMode.NONE)
                 .onQuantityChanged(c -> {
                     if (c.countAfter() > c.countBefore()) {
                         if (c.countAfter() <= 8) {
                             StatusworksApi.statuses().apply(c.entity(), c.definitionId(), 1);
                         } else {
-                            LOGGER.info("[stw-devtest] deepchain count={} clears powerstatus", c.countAfter());
+                            LOGGER.info("[stw-devtest] deepchain count={} clears powerstatus and groupedstatus",
+                                    c.countAfter());
                             StatusworksApi.statuses().clear(c.entity(), id("powerstatus"));
+                            StatusworksApi.statuses().clear(c.entity(), id("groupedstatus"));
                         }
                     }
                 }).build());
         MinecraftForge.EVENT_BUS.register(new GroupTestTypes.JoinCanceler());
         MinecraftForge.EVENT_BUS.register(new GroupTestTypes.ManaTicker());
+        MinecraftForge.EVENT_BUS.register(new GroupTestTypes.CloneKeeper());
         registerPool(loggedPool(PoolDefinition.builder(id("pspeed"))).capacity(100).start(PoolStart.FULL)
                 .fixed(Direction.DRAIN, 5)
                 .contribute(Contribution.attribute("generic.movementSpeed", AttributeOperation.MULTIPLY_TOTAL,
@@ -346,6 +350,8 @@ public class DevTestMod {
     @Mod.EventHandler
     public void serverStopping(FMLServerStoppingEvent event) {
         DevTestLoad.reset();
+        GroupTestTypes.lastReplaced = null;
+        GroupTestTypes.loopAtTickStart = null;
     }
 
     /** Adds callbacks that log each status point as {@code [stw-devtest] <point> <context>}. */

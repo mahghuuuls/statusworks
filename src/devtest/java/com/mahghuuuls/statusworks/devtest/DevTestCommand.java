@@ -37,6 +37,12 @@ import java.util.function.Consumer;
  *   test mark.</li>
  *   <li>{@code load}: builds the REQ-193 budget load ({@link DevTestLoad}) at the sender, or at the world spawn from
  *   the console; {@code load count} counts it, and {@code load clear} removes it.</li>
+ *   <li>{@code group <type> <ok|throw|refuse> [times]}: how the type's next invalidations answer; {@code group read}
+ *   reads the five group types on the sender, {@code group readold} on the player object the last clone replaced.</li>
+ *   <li>{@code settled <add|throw|off>}: the next {@code grouped} settled signal adds a stack or throws, once.</li>
+ *   <li>{@code mana <reset|accept|arm>}, {@code loop <on|off|starttick>}, {@code canceljoin [mob]},
+ *   {@code deepchain}: the mana model, the runaway loop (also started at the next tick start), a canceled next join,
+ *   and the 9-deep callback chain.</li>
  * </ul>
  */
 final class DevTestCommand extends CommandBase {
@@ -49,8 +55,8 @@ final class DevTestCommand extends CommandBase {
     @Override
     public String getUsage(ICommandSender sender) {
         return "/stwdev <dead|nonliving|fakeplayer|unknown|spawn <n>|bulk <duration>|bulkpool|bulkmark"
-                + "|load [clear|count]|group <type> <ok|throw|refuse> [times]|group read|mana <reset|accept|arm>"
-                + "|loop <on|off>|canceljoin [mob]|deepchain>";
+                + "|load [clear|count]|group <type> <ok|throw|refuse> [times]|group read|group readold"
+                + "|settled <add|throw|off>|mana <reset|accept|arm>|loop <on|off|starttick>|canceljoin [mob]|deepchain>";
     }
 
     @Override
@@ -169,11 +175,18 @@ final class DevTestCommand extends CommandBase {
             }
             case "group": {
                 EntityPlayer player = getCommandSenderAsPlayer(sender);
-                if (args.length >= 2 && "read".equals(args[1])) {
-                    for (String name : GroupTestTypes.NAMES) {
-                        log(sender, "group_read type=" + name + " " + StatusworksApi.contributions()
-                                .group(player, DevTestMod.id(name)));
+                if (args.length >= 2 && ("read".equals(args[1]) || "readold".equals(args[1]))) {
+                    boolean old = "readold".equals(args[1]);
+                    EntityPlayer target = old ? GroupTestTypes.lastReplaced : player;
+                    if (target == null) {
+                        throw new CommandException("no player object was replaced yet");
                     }
+                    for (String name : GroupTestTypes.NAMES) {
+                        log(sender, (old ? "group_read_old" : "group_read") + " type=" + name + " obj="
+                                + GroupTestTypes.obj(target) + " " + StatusworksApi.contributions()
+                                .group(target, DevTestMod.id(name)));
+                    }
+                    log(sender, "group_switches " + GroupTestTypes.switches());
                     break;
                 }
                 if (args.length < 3) {
@@ -208,11 +221,26 @@ final class DevTestCommand extends CommandBase {
                 break;
             }
             case "loop": {
-                if (args.length < 2 || !("on".equals(args[1]) || "off".equals(args[1]))) {
+                if (args.length < 2 || !java.util.Arrays.asList("on", "off", "starttick").contains(args[1])) {
                     throw new WrongUsageException(getUsage(sender));
+                }
+                if ("starttick".equals(args[1])) {
+                    GroupTestTypes.loopOn = true;
+                    GroupTestTypes.loopAtTickStart = getCommandSenderAsPlayer(sender);
+                    log(sender, "loop starttick: on, loopstatus applied at the next tick start");
+                    break;
                 }
                 GroupTestTypes.loopOn = "on".equals(args[1]);
                 log(sender, "loop " + args[1]);
+                break;
+            }
+            case "settled": {
+                if (args.length < 2 || !java.util.Arrays.asList("add", "throw", "off").contains(args[1])) {
+                    throw new WrongUsageException(getUsage(sender));
+                }
+                GroupTestTypes.settledAddArmed = "add".equals(args[1]);
+                GroupTestTypes.settledThrowArmed = "throw".equals(args[1]);
+                log(sender, "settled " + args[1] + ": " + GroupTestTypes.switches());
                 break;
             }
             case "canceljoin": {

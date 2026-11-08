@@ -3,6 +3,7 @@ package com.mahghuuuls.statusworks.core.contribution;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -16,9 +17,11 @@ import java.util.function.Predicate;
  * pass returns, so every pass sees a committed record. A plain request becomes the entity's plain next pass; a kept
  * request (a join, a retry) runs its own unit after the current pass, every kept unit in the order requested. When
  * passes keep requesting more passes, at most {@value #MAX_PASSES_IN_A_ROW} run in a row; what remains waits for
- * {@link #runDeferred(Predicate)}, which the server calls once per tick, kept units keeping their kind, and the limit
- * listener is told. Entities are compared by identity, so a new entity object for the same UUID is a different
- * entity.</p>
+ * {@link #runDeferred(Predicate)} of the next server tick, kept units keeping their kind, and the limit listener is
+ * told. The server calls {@link #nextTick()} when a tick starts and {@code runDeferred} when it ends; what waited
+ * since an earlier tick runs then, and what was deferred during the same tick (by a world tick, a command, or the
+ * deferred passes themselves) waits for the next one. Entities are compared by identity, so a new entity object for
+ * the same UUID is a different entity.</p>
  *
  * <p>Used on the server thread only.</p>
  */
@@ -31,6 +34,8 @@ final class PassSerializer<E> {
         final List<Runnable> kept = new ArrayList<>(1);
         boolean plain;
         Runnable again;
+        /** The tick in which these passes were deferred. */
+        long deferredAt;
 
         boolean isEmpty() {
             return kept.isEmpty() && !plain;
@@ -50,6 +55,7 @@ final class PassSerializer<E> {
     private final Map<E, Pending> pending = new IdentityHashMap<>();
     private final Map<E, Pending> deferred = new IdentityHashMap<>();
     private final Consumer<E> onLimit;
+    private long tick;
 
     /**
      * @param onLimit told when an entity reached the limit and its remaining passes were deferred
@@ -102,6 +108,7 @@ final class PassSerializer<E> {
                     return;
                 }
                 if (passes >= MAX_PASSES_IN_A_ROW) {
+                    p.deferredAt = tick;
                     deferred.put(entity, p);
                     onLimit.accept(entity);
                     return;
@@ -115,6 +122,7 @@ final class PassSerializer<E> {
                 Pending waitingUnits = new Pending();
                 waitingUnits.kept.addAll(p.kept);
                 waitingUnits.again = p.again;
+                waitingUnits.deferredAt = tick;
                 deferred.put(entity, waitingUnits);
             }
             throw t;
@@ -124,21 +132,38 @@ final class PassSerializer<E> {
         }
     }
 
-    /** Runs what each entity left waiting, as a new chain, for the entities that are still where a pass may run. */
+    /** Marks the start of a server tick: passes deferred before this call may run at this tick's end. */
+    void nextTick() {
+        tick++;
+    }
+
+    /**
+     * Runs what each entity left waiting since an earlier tick, as a new chain, for the entities that are still where
+     * a pass may run. What was deferred during this tick stays waiting for the next tick.
+     */
     void runDeferred(Predicate<E> stillHere) {
         if (deferred.isEmpty()) {
             return;
         }
-        List<Map.Entry<E, Pending>> due = new ArrayList<>(deferred.entrySet());
-        deferred.clear();
-        for (Map.Entry<E, Pending> e : due) {
-            Pending p = e.getValue();
-            if (!stillHere.test(e.getKey()) || p.isEmpty()) {
+        List<E> dueEntities = new ArrayList<>();
+        List<Pending> duePasses = new ArrayList<>();
+        for (Iterator<Map.Entry<E, Pending>> it = deferred.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<E, Pending> e = it.next();
+            if (e.getValue().deferredAt < tick) {
+                dueEntities.add(e.getKey());
+                duePasses.add(e.getValue());
+                it.remove();
+            }
+        }
+        for (int i = 0; i < dueEntities.size(); i++) {
+            E entity = dueEntities.get(i);
+            Pending p = duePasses.get(i);
+            if (!stillHere.test(entity) || p.isEmpty()) {
                 continue;
             }
             Runnable first = p.next();
-            deferred.put(e.getKey(), p);
-            request(e.getKey(), first, p.again);
+            deferred.put(entity, p);
+            request(entity, first, p.again);
         }
     }
 
