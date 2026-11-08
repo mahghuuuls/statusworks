@@ -10,7 +10,15 @@ import net.minecraft.entity.EntityLivingBase;
  * <p>Statusworks tells the type each new value of each contribution on an entity it applies to, and when a
  * contribution ends; a pull-based addon instead asks
  * {@link com.mahghuuuls.statusworks.api.ContributionService#currentValues}. Calls run on the server thread through
- * Statusworks' callback guard, so an exception is logged and counted, never thrown at the caller.</p>
+ * Statusworks' callback guard, so an exception is logged and counted, never thrown at the caller; after 10 failures
+ * in a row that notice is switched off until restart.</p>
+ *
+ * <p>Notices run inside the change that causes them, after Statusworks has updated the entity's contributions, so
+ * {@code currentValues} already shows the new values. They are never dropped, also inside long chains of callbacks.
+ * A change to Statusworks state made from a notice runs as the next contribution pass for that entity, after the
+ * current one; at most 8 passes run in a row, and the next waits for the next server tick. Statusworks' health rule
+ * (raising maximum health never refills, lowering it lowers health) applies to its own changes before the notices;
+ * a type that changes maximum health itself from a notice handles health itself.</p>
  */
 public interface ContributionType {
 

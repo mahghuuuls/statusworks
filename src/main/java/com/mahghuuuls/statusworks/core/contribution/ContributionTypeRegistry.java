@@ -40,6 +40,10 @@ public final class ContributionTypeRegistry {
         frozen = true;
     }
 
+    public synchronized boolean isFrozen() {
+        return frozen;
+    }
+
     public synchronized boolean isKnown(String id) {
         return types.containsKey(id);
     }

@@ -175,6 +175,33 @@ public class DevTestMod {
                         ValueForm.PER_STACK, 0.05)).build());
         register(logged(StatusDefinition.builder(id("powerstatus"))).limit(5).defaultDuration(6000)
                 .contribute(Contribution.type(id("power"), ValueForm.PER_STACK, 1)).build());
+        // Group signal types (players only) and the statuses that feed them.
+        GroupTestTypes.register();
+        register(logged(StatusDefinition.builder(id("groupedstatus"))).limit(5).defaultDuration(6000)
+                .contribute(Contribution.type(id("grouped"), ValueForm.PER_STACK, 1)).build());
+        register(logged(StatusDefinition.builder(id("flakystatus"))).limit(5).defaultDuration(6000)
+                .contribute(Contribution.type(id("flaky"), ValueForm.PER_STACK, 1)).build());
+        // The mana model's negative maximum: 120 - 20 = 100 while it applies.
+        register(logged(StatusDefinition.builder(id("manacurse"))).expiration(ExpirationMode.NONE)
+                .contribute(Contribution.type(id("mana"), ValueForm.FIXED, -20)).build());
+        register(logged(StatusDefinition.builder(id("livingstatus"))).limit(5).defaultDuration(6000)
+                .contribute(Contribution.type(id("living"), ValueForm.PER_STACK, 1)).build());
+        register(StatusDefinition.builder(id("loopstatus")).limit(3).expiration(ExpirationMode.NONE)
+                .contribute(Contribution.type(id("loop"), ValueForm.PER_STACK, 1)).build());
+        // A chain of callbacks whose ninth, at depth 8, removes powerstatus: its end notice must still arrive.
+        register(StatusDefinition.builder(id("deepchain")).limit(20).expiration(ExpirationMode.NONE)
+                .onQuantityChanged(c -> {
+                    if (c.countAfter() > c.countBefore()) {
+                        if (c.countAfter() <= 8) {
+                            StatusworksApi.statuses().apply(c.entity(), c.definitionId(), 1);
+                        } else {
+                            LOGGER.info("[stw-devtest] deepchain count={} clears powerstatus", c.countAfter());
+                            StatusworksApi.statuses().clear(c.entity(), id("powerstatus"));
+                        }
+                    }
+                }).build());
+        MinecraftForge.EVENT_BUS.register(new GroupTestTypes.JoinCanceler());
+        MinecraftForge.EVENT_BUS.register(new GroupTestTypes.ManaTicker());
         registerPool(loggedPool(PoolDefinition.builder(id("pspeed"))).capacity(100).start(PoolStart.FULL)
                 .fixed(Direction.DRAIN, 5)
                 .contribute(Contribution.attribute("generic.movementSpeed", AttributeOperation.MULTIPLY_TOTAL,

@@ -12,6 +12,7 @@ import com.mahghuuuls.statusworks.core.state.PoolOperations;
 import com.mahghuuuls.statusworks.core.state.StatusOperations;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.event.entity.EntityTravelToDimensionEvent;
 import net.minecraftforge.event.world.WorldEvent;
@@ -131,8 +132,14 @@ public final class TickDriver {
     @SubscribeEvent
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
-            // Marks span worlds, so they advance once per server tick, after every world ticked.
             long start = System.nanoTime();
+            // Contribution passes that waited because an entity reached the pass limit.
+            contributions.runDeferredPasses();
+            // Failed contribution groups are retried once per second.
+            if (serverTicks % 20 == 0) {
+                contributions.retryFailedGroups();
+            }
+            // Marks span worlds, so they advance once per server tick, after every world ticked.
             marks.tick(serverTicks);
             // Each player's changed entries go out once, after every change of the tick.
             ownEntries.tick(serverTicks);
@@ -168,6 +175,11 @@ public final class TickDriver {
      * Only the reporting world's set changes, never the set of the world the entity is in now.
      */
     private void onRemoved(net.minecraft.world.World world, Entity entity) {
+        // The object left the world it is in: its contribution groups stop being current. A stale report from a world
+        // the entity is no longer in does not count.
+        if (entity instanceof EntityLivingBase && entity.world == world) {
+            contributions.leave((EntityLivingBase) entity);
+        }
         // Mark participants are classified even without any state of their own.
         boolean participant = entity instanceof EntityLivingBase && marks.participates(entity.getUniqueID());
         if (!active.remove(world, entity)) {
@@ -200,9 +212,17 @@ public final class TickDriver {
         }
     }
 
-    @SubscribeEvent(priority = EventPriority.LOWEST)
+    /**
+     * Also hears joins another mod canceled: World.spawnEntity still adds a player or a force-spawned entity whose
+     * join was canceled, so it gets its join handling too ({@link JoinRule}).
+     */
+    @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
     public void onJoin(EntityJoinWorldEvent event) {
         if (event.getWorld().isRemote || !(event.getEntity() instanceof EntityLivingBase)) {
+            return;
+        }
+        if (!JoinRule.added(event.isCanceled(), event.getEntity() instanceof EntityPlayer,
+                event.getEntity().forceSpawn)) {
             return;
         }
         EntityLivingBase entity = (EntityLivingBase) event.getEntity();

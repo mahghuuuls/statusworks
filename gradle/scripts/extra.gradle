@@ -31,3 +31,39 @@ tasks.named('runServer', JavaExec).configure { JavaExec task ->
     task.workingDir = file('run/server')
     task.doFirst { file('run/server').mkdirs() }
 }
+
+// The development test addon as a reobfuscated jar, for a launch in a production instance (Cleanroom). Built only
+// on request (gradlew devtestReobfJar), into build/devtest-libs, never by build or assemble, so the release output in
+// build/libs never holds it.
+def devtestJar = tasks.register('devtestJar', Jar) {
+    group = 'devtest'
+    description = 'Packs the development test addon (deobfuscated names).'
+    archiveBaseName = 'statusworks_devtest'
+    archiveClassifier = 'dev'
+    destinationDirectory = layout.buildDirectory.dir('devtest-libs')
+    from sourceSets.devtest.output
+    dependsOn tasks.named('devtestClasses')
+}
+// An applied script cannot name plugin classes, so the task type comes from the plugin's own reobfJar task.
+def reobfType = tasks.named('reobfJar').get().class.classLoader
+        .loadClass('com.gtnewhorizons.retrofuturagradle.mcp.ReobfuscatedJar')
+tasks.register('devtestReobfJar', reobfType) { t ->
+    group = 'devtest'
+    description = 'Reobfuscates the development test addon for a production instance.'
+    def main = tasks.named('reobfJar').get()
+    t.setInputJarFromTask(devtestJar)
+    t.mcVersion.set(main.mcVersion)
+    t.srg.set(main.srg)
+    t.fieldCsv.set(main.fieldCsv)
+    t.methodCsv.set(main.methodCsv)
+    t.exceptorCfg.set(main.exceptorCfg)
+    t.recompMcJar.set(main.recompMcJar)
+    t.extraSrgEntries.set(main.extraSrgEntries)
+    t.extraSrgFiles.from(main.extraSrgFiles)
+    t.referenceClasspath.from(main.referenceClasspath)
+    t.referenceClasspath.from(sourceSets.main.output)
+    t.archiveBaseName = 'statusworks_devtest'
+    t.archiveClassifier = ''
+    t.destinationDirectory = layout.buildDirectory.dir('devtest-libs')
+    t.dependsOn(devtestJar)
+}

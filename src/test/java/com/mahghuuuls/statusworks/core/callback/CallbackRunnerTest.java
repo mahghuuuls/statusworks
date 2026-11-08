@@ -162,6 +162,106 @@ class CallbackRunnerTest {
         assertFalse(runner.inCallback());
     }
 
+    /** Runs {@code innermost} as a callback at depth {@code levels}: each level's callback triggers the next. */
+    private void atDepth(int levels, Runnable innermost) {
+        Runnable[] step = new Runnable[levels + 1];
+        step[levels] = innermost;
+        for (int i = levels - 1; i >= 0; i--) {
+            Runnable next = step[i + 1];
+            step[i] = () -> runner.run("a:s", "quantity_changed", next);
+        }
+        runner.run("a:s", "quantity_changed", step[0]);
+    }
+
+    @Test
+    void aCallbackPastTheDepthLimitIsStoppedButANoticeThereStillRuns() {
+        boolean[] callbackRan = new boolean[1];
+        boolean[] noticeRan = new boolean[1];
+        atDepth(CallbackRunner.MAX_DEPTH, () -> {
+            runner.run("a:s", "removed", () -> callbackRan[0] = true);
+            runner.deliver("type:test:power", "end", () -> noticeRan[0] = true);
+        });
+        assertFalse(callbackRan[0], "a callback chain deeper than the limit is stopped (REQ-094)");
+        assertTrue(noticeRan[0], "an end notice is never stopped by the depth limit (REQ-087)");
+        assertEquals(1, warnings.size());
+        assertFalse(runner.inCallback());
+    }
+
+    @Test
+    void aNoticeRunsAtOnceInsideACallbackAndInsideABatch() {
+        List<String> order = new ArrayList<>();
+        runner.run("a:s", "applied", () -> {
+            runner.deliver("type:t", "value", () -> order.add("notice in callback"));
+            order.add("callback end");
+        });
+        runner.batch(() -> {
+            runner.deliver("type:t", "value", () -> order.add("notice in batch"));
+            order.add("batch end");
+        });
+        assertEquals(java.util.Arrays.asList("notice in callback", "callback end", "notice in batch", "batch end"),
+                order);
+        assertFalse(runner.inCallback());
+    }
+
+    @Test
+    void callbacksTriggeredByANoticeRunAfterItReturns() {
+        List<String> order = new ArrayList<>();
+        runner.deliver("type:t", "end", () -> {
+            order.add("notice start");
+            runner.run("a:s", "removed", () -> order.add("triggered callback"));
+            order.add("notice end");
+        });
+        assertEquals(java.util.Arrays.asList("notice start", "notice end", "triggered callback"), order);
+        assertFalse(runner.inCallback());
+    }
+
+    @Test
+    void aCallbackRequestedAfterANoticeInsideACallbackIsStillDeferred() {
+        List<String> order = new ArrayList<>();
+        runner.run("a:s", "applied", () -> {
+            runner.deliver("type:t", "value", () -> order.add("notice"));
+            runner.run("a:s", "removed", () -> order.add("later callback"));
+            order.add("callback end");
+        });
+        assertEquals(java.util.Arrays.asList("notice", "callback end", "later callback"), order);
+    }
+
+    @Test
+    void aNoticeAtTheDepthLimitDoesNotRestartTheChain() {
+        boolean[] ran = new boolean[1];
+        atDepth(CallbackRunner.MAX_DEPTH, () -> runner.deliver("type:t", "value",
+                () -> runner.run("a:s", "removed", () -> ran[0] = true)));
+        assertFalse(ran[0], "a callback triggered by a notice at depth 8 would be depth 9 and is stopped");
+        assertEquals(1, warnings.size());
+    }
+
+    @Test
+    void aNoticeInsideABatchDoesNotRunTheBatchsCallbacksEarly() {
+        List<String> order = new ArrayList<>();
+        runner.batch(() -> {
+            runner.run("a:s", "applied", () -> order.add("queued callback"));
+            runner.deliver("type:t", "value", () -> order.add("notice"));
+            order.add("batch end");
+        });
+        assertEquals(java.util.Arrays.asList("notice", "batch end", "queued callback"), order);
+    }
+
+    @Test
+    void aNoticeThatFailsTenTimesInARowIsDisabledLikeACallback() {
+        AtomicInteger calls = new AtomicInteger();
+        Runnable call = () -> {
+            calls.incrementAndGet();
+            throw new IllegalStateException("test");
+        };
+        for (int i = 0; i < 15; i++) {
+            runner.deliver("type:t", "value", call);
+        }
+        assertEquals(CallbackRunner.DISABLE_AFTER, calls.get());
+        assertTrue(counts.isDisabled("type:t value"));
+        assertEquals(1, errors.size());
+        assertEquals(1, warnings.size());
+    }
+
     @Test
     void inCallbackIsTrueOnlyWhileACallbackRuns() {
         assertFalse(runner.inCallback());

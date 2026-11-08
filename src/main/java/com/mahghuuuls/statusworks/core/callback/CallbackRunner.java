@@ -22,6 +22,9 @@ import java.util.function.BooleanSupplier;
  *   <li>A chain of callbacks triggered by callbacks stops past depth {@value #MAX_DEPTH}, with one warning per
  *   callback, so a self-feeding callback cannot run away. The change that the stopped callback would have
  *   reported has already taken effect.</li>
+ *   <li>Contribution-type notices are not callbacks for the depth limit or the deferral
+ *   ({@link #deliver(String, String, Runnable)}): they run at once, inside the change that sends them, so a type
+ *   never misses a value or an end. They keep the failure count and the disabling.</li>
  * </ul>
  *
  * <p>Used on the server thread only.</p>
@@ -47,7 +50,7 @@ public final class CallbackRunner {
     private final Warnings warnings;
     private final BiConsumer<String, Throwable> errorLog;
     private final ArrayDeque<Pending> queue = new ArrayDeque<>();
-    /** Depth of the callback now running, or -1 when none runs. */
+    /** Depth of the callback or contribution-type notice now running, or -1 when neither runs. */
     private int depth = -1;
     /** Open {@link #batch(Runnable)} scopes outside any callback. */
     private int batches;
@@ -61,7 +64,10 @@ public final class CallbackRunner {
         this.errorLog = errorLog;
     }
 
-    /** Whether a callback is running now; changes made inside one are logged with the cause "callback". */
+    /**
+     * Whether a callback or a contribution-type notice is running now; changes made inside one are logged with the
+     * cause "callback".
+     */
     public boolean inCallback() {
         return depth >= 0;
     }
@@ -109,6 +115,23 @@ public final class CallbackRunner {
     }
 
     /**
+     * Runs a contribution-type notice now, whatever callback is running or batch is open, and whatever the depth.
+     * Failures are counted and disable the notice like a callback. Callbacks that the notice triggers are queued and
+     * run after it, at the depth a callback running here would give them.
+     *
+     * @param definitionId the type the notice belongs to, for example {@code type:test:power}
+     * @param point the notice, for example {@code end}
+     * @param call the notice itself
+     */
+    public void deliver(String definitionId, String point, Runnable call) {
+        int outer = depth;
+        guarded(definitionId + " " + point, call, Math.max(outer, 0), outer);
+        if (depth < 0 && batches == 0) {
+            drain();
+        }
+    }
+
+    /**
      * Asks an author's yes-or-no question now (a query, never queued) under the same failure policy: an
      * exception is logged once and counted, and after {@value #DISABLE_AFTER} failures in a row the question is
      * no longer asked. On failure or when disabled, the answer is {@code onFailure}.
@@ -136,6 +159,11 @@ public final class CallbackRunner {
     }
 
     private void execute(String key, Runnable call, int at) {
+        guarded(key, call, at, -1);
+    }
+
+    /** Runs one call under the failure policy with the depth set to {@code at}, then sets it to {@code after}. */
+    private void guarded(String key, Runnable call, int at, int after) {
         if (counts.isDisabled(key)) {
             return;
         }
@@ -146,7 +174,7 @@ public final class CallbackRunner {
         } catch (Throwable t) {
             fail(key, t);
         } finally {
-            depth = -1;
+            depth = after;
         }
     }
 

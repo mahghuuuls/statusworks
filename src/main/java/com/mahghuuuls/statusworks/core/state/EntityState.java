@@ -1,6 +1,7 @@
 package com.mahghuuuls.statusworks.core.state;
 
 import com.mahghuuuls.statusworks.core.contribution.ContributionRecord;
+import com.mahghuuuls.statusworks.core.contribution.GroupStates;
 import com.mahghuuuls.statusworks.core.rule.CooldownState;
 import com.mahghuuuls.statusworks.core.rule.PoolState;
 import com.mahghuuuls.statusworks.core.rule.StatusState;
@@ -202,6 +203,13 @@ public final class EntityState {
     // Created on first use: most entities never get a contribution.
     @Nullable
     private ContributionRecord contributions;
+
+    /** Contribution group state of this entity object; runtime only, never saved. */
+    private final GroupStates groups = new GroupStates();
+
+    public GroupStates contributionGroups() {
+        return groups;
+    }
 
     /** The record of the contributions applied to this entity. */
     public ContributionRecord contributions() {

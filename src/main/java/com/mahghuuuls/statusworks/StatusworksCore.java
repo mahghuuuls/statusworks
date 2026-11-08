@@ -64,7 +64,8 @@ public final class StatusworksCore implements StatusworksApi.Backend {
         this.warnings = new Warnings(logger::warn);
         this.diagnosticLog = new DiagnosticLog(logger::info, System::currentTimeMillis, diagnosticOn, linesPerSecond);
         this.callbacks = new CallbackRunner(errorCounts, warnings, logger::error);
-        this.contributions = new ContributionManager(registry, contributionTypes, callbacks, diagnosticLog);
+        this.contributions = new ContributionManager(registry, contributionTypes, callbacks, diagnosticLog, warnings, errorCounts,
+                logger::error);
         this.statuses = new StatusOperations(registry, diagnosticLog, warnings, callbacks,
                 entity -> this.tickDriver.track(entity), contributions::reconcile);
         this.pools = new PoolOperations(registry, diagnosticLog, warnings, callbacks,

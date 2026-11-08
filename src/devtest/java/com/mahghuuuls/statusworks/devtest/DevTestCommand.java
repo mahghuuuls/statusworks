@@ -10,6 +10,7 @@ import net.minecraft.command.WrongUsageException;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.monster.EntityZombie;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
@@ -48,7 +49,8 @@ final class DevTestCommand extends CommandBase {
     @Override
     public String getUsage(ICommandSender sender) {
         return "/stwdev <dead|nonliving|fakeplayer|unknown|spawn <n>|bulk <duration>|bulkpool|bulkmark"
-                + "|load [clear|count]>";
+                + "|load [clear|count]|group <type> <ok|throw|refuse> [times]|group read|mana <reset|accept|arm>"
+                + "|loop <on|off>|canceljoin [mob]|deepchain>";
     }
 
     @Override
@@ -163,6 +165,71 @@ final class DevTestCommand extends CommandBase {
                     Entity self = sender.getCommandSenderEntity();
                     DevTestLoad.build((WorldServer) world, self != null ? pos : world.getSpawnPoint(), out);
                 }
+                break;
+            }
+            case "group": {
+                EntityPlayer player = getCommandSenderAsPlayer(sender);
+                if (args.length >= 2 && "read".equals(args[1])) {
+                    for (String name : GroupTestTypes.NAMES) {
+                        log(sender, "group_read type=" + name + " " + StatusworksApi.contributions()
+                                .group(player, DevTestMod.id(name)));
+                    }
+                    break;
+                }
+                if (args.length < 3) {
+                    throw new WrongUsageException(getUsage(sender));
+                }
+                GroupTestTypes.Behavior b = GroupTestTypes.BEHAVIOR.get(DevTestMod.id(args[1]));
+                if (b == null || !java.util.Arrays.asList("ok", "throw", "refuse").contains(args[2])) {
+                    throw new WrongUsageException(getUsage(sender));
+                }
+                int times = args.length > 3 ? parseInt(args[3], 1) : -1;
+                b.mode = args[2];
+                b.times = times;
+                log(sender, "group_behavior type=" + args[1] + " mode=" + b.mode + " times=" + b.times);
+                break;
+            }
+            case "mana": {
+                EntityPlayer player = getCommandSenderAsPlayer(sender);
+                if (args.length >= 2 && "reset".equals(args[1])) {
+                    GroupTestTypes.manaSaved = 110;
+                    GroupTestTypes.manaAccepted = null;
+                    GroupTestTypes.manaArmedFor = null;
+                    GroupTestTypes.manaLastRefusal = null;
+                    log(sender, "mana_reset saved=110 base_max=120");
+                } else if (args.length >= 2 && "arm".equals(args[1])) {
+                    GroupTestTypes.manaArmedFor = player;
+                    log(sender, "mana_armed: tries its first acceptance every tick and at every settled signal");
+                } else if (args.length >= 2 && "accept".equals(args[1])) {
+                    log(sender, GroupTestTypes.tryAcceptMana(player));
+                } else {
+                    throw new WrongUsageException(getUsage(sender));
+                }
+                break;
+            }
+            case "loop": {
+                if (args.length < 2 || !("on".equals(args[1]) || "off".equals(args[1]))) {
+                    throw new WrongUsageException(getUsage(sender));
+                }
+                GroupTestTypes.loopOn = "on".equals(args[1]);
+                log(sender, "loop " + args[1]);
+                break;
+            }
+            case "canceljoin": {
+                if (args.length > 1 && "mob".equals(args[1])) {
+                    GroupTestTypes.cancelNextMobJoin = true;
+                    log(sender, "canceljoin armed: the next mob join is canceled");
+                } else {
+                    GroupTestTypes.cancelNextJoin = true;
+                    log(sender, "canceljoin armed: the next player join is canceled");
+                }
+                break;
+            }
+            case "deepchain": {
+                EntityPlayer player = getCommandSenderAsPlayer(sender);
+                statuses.clear(player, DevTestMod.id("deepchain"));
+                statuses.apply(player, DevTestMod.id("deepchain"), 1);
+                log(sender, "deepchain started; count=" + statuses.count(player, DevTestMod.id("deepchain")));
                 break;
             }
             default:

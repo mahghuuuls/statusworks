@@ -16,6 +16,11 @@ public final class Warnings {
         this.sink = sink;
     }
 
+    /** Writes the message now, whether or not it was written before; for warnings the caller already limits. */
+    public void warn(String message) {
+        sink.accept(message);
+    }
+
     /** Writes the message the first time the key is seen; later calls with the same key write nothing. */
     public void once(String key, String message) {
         if (seen.add(key)) {
