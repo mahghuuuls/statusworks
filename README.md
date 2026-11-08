@@ -10,7 +10,7 @@ Statusworks is a Minecraft 1.12.2 Forge library that tracks custom state on play
 
 ## Identity and install sides
 
-- Mod id `statusworks`, version `1.1.0`, root package `com.mahghuuuls.statusworks`.
+- Mod id `statusworks`, version `1.2.0`, root package `com.mahghuuuls.statusworks`.
 - Required on the server and on every client. The server owns all state; clients only draw the HUD and particles they are sent.
 - Optional dependency: CraftTweaker, declared as `after:crafttweaker@[4.1.20,)`. Without it, everything except scripts works.
 - Built and tested for Forge 14.23.5 and Cleanroom.
@@ -33,9 +33,10 @@ Statusworks is a Minecraft 1.12.2 Forge library that tracks custom state on play
 
 - `registerStatus`, `registerPool`, `registerMark`, `registerCooldown`, `registerContributionType` with builders from `api.definition` (`StatusDefinition.builder(id)` and so on). Register before loading completes.
 - `statuses()`, `pools()`, `marks()`, `cooldowns()`, `contributions()` return the services that change and query state. Most operations return a result that says whether they succeeded and why not; a few return a boolean or a count.
+- A contribution type that implements `ContributionGroupType` also gets group signals: an invalidation before its values on an entity change and a settled signal with the complete values after; `contributions().group(entity, typeId)` says whether those values are current.
 - `api.client.StatusworksClient` gives client-side code a read-only view of the entries the client was sent.
 
-[`examples/JavaExample.java`](examples/JavaExample.java) registers a stacking status with a callback. The [Java guide](docs/java-api.md) covers registration, the services, callbacks, custom contribution types, and the client view.
+[`examples/JavaExample.java`](examples/JavaExample.java) registers a stacking status with a callback. The [Java guide](docs/java-api.md) covers registration, the services, callbacks, custom contribution types with group signals, and the client view.
 
 ## CraftTweaker
 

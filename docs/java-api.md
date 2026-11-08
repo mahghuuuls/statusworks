@@ -37,7 +37,7 @@ StatusworksApi.registerStatus(StatusDefinition.builder("mymod:rage")
 | `StatusworksApi.pools()` | `add`, `subtract`, `set`, `setCapacity`, `setLifetime`, `extendLifetime`, `pause`, `resume`, `remove`, `has`, `get` (a `PoolSnapshot`) |
 | `StatusworksApi.marks()` | `mark(source, target, id)`, `mark(source, target, id, ticks)`, `unmark`, `clearSource`, `clearTarget`, `isMarked`, `targets`, `sources`, `targetEntities`, `sourceEntities`, `targetCount`, `sourceCount` |
 | `StatusworksApi.cooldowns()` | `start`, `restart`, `extend`, `reduce`, `clear`, `startIfReady`, `isRunning`, `remaining` |
-| `StatusworksApi.contributions()` | `currentValues(entity, typeId)` |
+| `StatusworksApi.contributions()` | `currentValues(entity, typeId)`, `group(entity, typeId)` |
 
 Change methods return a result object with `succeeded()` and what changed: `StackChange` (`added()`, `rejected()`), `CountChange`, `PoolChange`, and `CooldownChange` (values before and after), each with `failure()` saying why it did not succeed, and `MarkResult` with `outcome()`, `replacedTarget()`, and `reason()` (set only when rejected). `unmark`, `isMarked`, `clearSource`, `clearTarget`, and `startIfReady` return a boolean or a count. Queries change nothing.
 
@@ -59,6 +59,32 @@ StatusworksApi.registerContributionType(new ContributionType() {
 ```
 
 Statusworks calls `onValue` whenever a contribution's value changes, and again with the same value whenever the entity joins a world (load, dimension change, respawn), so it must be safe to repeat; it calls `onEnd` when the contribution ends. There is one key per contributing instance. `appliesTo` decides which entities the type acts on. Definitions then use `Contribution.type("mymod:mana_regen", ValueForm.PER_STACK, 0.5)`, and scripts use `contributeType`.
+
+Notices run after Statusworks has applied the whole change (attribute modifiers, saved state, health), so `contributions().currentValues(...)` already shows the new values, and the callback depth limit never drops them. Like a callback, a notice that throws 10 times in a row is switched off until restart. If your notice changes Statusworks state, the change takes effect at once, and the update of this entity's contributions that it causes runs after the current one; changes to other entities are applied at once. At most 8 such updates run in a row; the next waits for the next server tick, and the log warns once per contribution type.
+
+### Group signals
+
+When your mod computes one result from all of a type's values on an entity, such as a maximum built from several bonuses, implement `ContributionGroupType` instead. It adds two signals:
+
+```java
+private final Map<EntityLivingBase, Double> cache = new WeakHashMap<>();
+
+public boolean invalidate(EntityLivingBase entity) {
+    cache.remove(entity);   // stop treating the old result as current
+    return true;            // confirm
+}
+
+public void settled(EntityLivingBase entity, Map<String, Double> group) {
+    cache.put(entity, sum(group));   // the complete group; empty means none
+}
+```
+
+- For each entity the type applies to, Statusworks calls `invalidate` before the group can change, then the change's `onValue` and `onEnd` notices, then `settled` with every value. Every join of the entity to a world sends a pair too, even with an empty group; at a join, the replayed `onValue` notices and any notices of the join's own update come first, then the pair.
+- Only `true` confirms an invalidation. `false` or an exception makes the group failed: Statusworks still applies the change, sends no `settled`, and retries once a second, up to 60 times, then logs one warning and the group stays failed. The next change to that type's values, join, respawn, or End exit starts a new series. Group signals are never switched off after errors.
+- `contributions().group(entity, typeId)` returns a `ContributionGroup`: `availability()` is `UNAVAILABLE` (no group for this entity object yet, an object that was replaced, an entity that left its world until it joins again, an entity the type does not apply to, or on the client), `UPDATING` (invalidated, settled signal not started), `FAILED`, or `AVAILABLE`, and `values()` holds the complete group only when available. Use a stored result only while the group is available; inside `settled` it already is. An entity that leaves its world (unloading, removal, the start of a dimension change, logout) gets no signal, so read `group(...)` before each use, and keep cached results in a weak-keyed map.
+- A respawn or an End exit creates a new player object: the old one gets an invalidation for each group that was available and stays unavailable, and the new one becomes available after its own pair.
+- If `settled` throws, the error is logged once and the group still answers available with the committed values, so a result you were storing there may be missing.
+- `appliesTo` is also asked when the group is read, so keep it cheap and do not read the group from it; when it fails, that read answers failed.
 
 ## Client view
 

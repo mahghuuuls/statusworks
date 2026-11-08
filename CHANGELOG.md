@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-08
+
+Client and server must run the same Statusworks version: update both to 1.2.0.
+
+### Added
+
+- Group signals for addon contribution types. A type that implements `ContributionGroupType` is told before its group of values on an entity can change (`invalidate`, which it must confirm) and gets the complete group after the change (`settled`). `ContributionService.group(entity, typeId)` says whether that group is current: unavailable, updating, failed, or available. A failed invalidation is retried once a second, up to 60 times; then one warning is logged and the group stays failed until that type's values change or the entity joins a world again. `ContributionType` itself is unchanged; group signals are opt-in.
+
+### Changed
+
+- Contribution-type value and end notices now run after the change has been applied in full (attribute modifiers, saved state, health). When a notice changes state, the contribution update that change causes runs after the current one; at most 8 run in a row, then the next waits for the next server tick, with one warning in the log.
+- When another mod cancels a player's join, Statusworks now still sets the player up, because Forge adds the player to the world anyway.
+
+### Fixed
+
+- Contribution-type notices were lost inside chains of callbacks deeper than 8, for example the end notice when such a chain removed the last state contributing to a type.
+
 ## [1.1.0] - 2026-11-06
 
 Client and server must run the same Statusworks version: update both to 1.1.0.
