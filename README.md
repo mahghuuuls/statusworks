@@ -10,7 +10,7 @@ Statusworks is a Minecraft 1.12.2 Forge library that tracks custom state on play
 
 ## Identity and install sides
 
-- Mod id `statusworks`, version `1.2.0`, root package `com.mahghuuuls.statusworks`.
+- Mod id `statusworks`, version `1.3.0`, root package `com.mahghuuuls.statusworks`.
 - Required on the server and on every client. The server owns all state; clients only draw the HUD and particles they are sent.
 - Optional dependency: CraftTweaker, declared as `after:crafttweaker@[4.1.20,)`. Without it, everything except scripts works.
 - Built and tested for Forge 14.23.5 and Cleanroom.

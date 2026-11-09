@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-09
+
+Client and server must run the same Statusworks version: update both to 1.3.0.
+
+### Added
+
+- A new group availability, `PENDING`. While contribution updates for an entity are still waiting (an update asked for while another one runs, or updates held back to the next server tick after 8 in a row), `ContributionService.group(entity, typeId)` answers `PENDING`, with no values, for every group type on that entity. Once the waiting updates have run, the group answers as before; when they changed nothing for a type, it reads available again with the same values and no new signal. Unavailable and failed come before pending.
+- With the diagnostic log on (`diagnosticLog`), a line when an entity's contribution updates are held back to the next tick, and one when they run at the next tick.
+
+### Changed
+
+- A group read that answered available or updating in 1.2.0, including a read inside `settled` or another Statusworks callback, now answers `PENDING` while more updates for that entity are waiting. An addon that reads the group again before each use and uses it only when `AVAILABLE` needs no change. Code that reads it once inside a callback and then waits for the next signal can now get `PENDING` with no later signal: use the values passed to `settled`, or read again later. A `switch` over `GroupAvailability` must handle the new value; code that names `PENDING` needs Statusworks 1.3.0 or newer.
+
 ## [1.2.0] - 2026-11-08
 
 Client and server must run the same Statusworks version: update both to 1.2.0.
