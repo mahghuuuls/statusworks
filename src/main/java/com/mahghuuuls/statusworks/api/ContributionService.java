@@ -19,7 +19,10 @@ public interface ContributionService {
      * and, when available, its complete values. Unavailable on the client, for an entity that has not joined a world
      * yet or was replaced, and for a type without group signals or that does not apply to the entity. The type's
      * {@code appliesTo} is asked at the moment of the read: when it says no, or fails, that read answers unavailable
-     * or failed, whatever the stored state; it changes nothing until the next change, join or retry.
+     * or failed, whatever the stored state; it changes nothing until the next change, join or retry. While
+     * contribution work for the entity object is waiting, the group is pending (also for a read made inside a
+     * Statusworks callback). When several answers apply, unavailable comes first, then failed, then pending, then
+     * updating or available.
      */
     com.mahghuuuls.statusworks.api.contribution.ContributionGroup group(Entity entity, String typeId);
 }

@@ -32,6 +32,8 @@ class GroupBoundaryTest {
         final List<String> groupTypes = new ArrayList<>(Collections.singletonList(T));
         final Set<String> notApplying = new HashSet<>();
         boolean appliesThrows;
+        /** Entities with waiting contribution work. */
+        final Set<String> waiting = new HashSet<>();
         final Map<String, GroupStates> states = new HashMap<>();
         /** Committed values by entity, then by type. */
         final Map<String, Map<String, Map<String, Double>>> committed = new HashMap<>();
@@ -81,6 +83,11 @@ class GroupBoundaryTest {
         public Map<String, Double> committed(String entity, String typeId) {
             return new LinkedHashMap<>(committed.getOrDefault(entity, Collections.emptyMap())
                     .getOrDefault(typeId, Collections.emptyMap()));
+        }
+
+        @Override
+        public boolean waiting(String entity) {
+            return waiting.contains(entity);
         }
 
         @Override
@@ -562,5 +569,111 @@ class GroupBoundaryTest {
         diagnostics.clear();
         change("p", T, values("s#0", 2));
         assertTrue(diagnostics.isEmpty());
+    }
+
+    // Pending (REQ-208): the read while contribution work waits.
+
+    @Test
+    void waitingWorkReadsPendingWithNoValuesThenTheGroupAgain() {
+        present("p");
+        set("p", T, values("s#0", 1));
+        join("p");
+        side.waiting.add("p");
+        ContributionGroup g = boundary.read("p", T);
+        assertEquals(GroupAvailability.PENDING, g.availability());
+        assertTrue(g.values().isEmpty(), "a pending group shows no values");
+        present("q");
+        join("q");
+        assertEquals(GroupAvailability.AVAILABLE, availability("q", T), "another entity is not affected");
+        side.waiting.remove("p");
+        assertEquals(values("s#0", 1), boundary.read("p", T).values());
+        assertTrue(boundary.read("p", T).isAvailable());
+    }
+
+    @Test
+    void theConsumerShapedCaseAcceptsNothingWhilePendingThen110Of120() {
+        double[] accepted = {-1, -1};
+        Runnable tryAccept = () -> {
+            ContributionGroup g = boundary.read("p", T);
+            if (accepted[0] < 0 && g.isAvailable()) {
+                double max = 120 + g.values().values().stream().mapToDouble(Double::doubleValue).sum();
+                accepted[0] = Math.min(110, max);
+                accepted[1] = max;
+            }
+        };
+        present("p");
+        set("p", T, values("curse#0", -20));
+        join("p");
+        side.waiting.add("p");
+        tryAccept.run();
+        assertEquals(-1, accepted[0], "nothing is accepted while the withdrawal waits");
+        side.onSettled.put(T, tryAccept);
+        side.waiting.remove("p");
+        change("p", T, values());
+        assertEquals(110, accepted[0]);
+        assertEquals(120, accepted[1]);
+    }
+
+    @Test
+    void aWaitingEntityStillReadsUnavailableWithoutAGroup() {
+        side.waiting.add("p");
+        assertEquals(GroupAvailability.UNAVAILABLE, availability("p", T), "no state");
+        present("p");
+        assertEquals(GroupAvailability.UNAVAILABLE, availability("p", T), "not joined");
+        join("p");
+        assertEquals(GroupAvailability.UNAVAILABLE, availability("p", "test:none"), "not a group type");
+        side.notApplying.add(T);
+        assertEquals(GroupAvailability.UNAVAILABLE, availability("p", T), "the type does not apply");
+    }
+
+    @Test
+    void aStoredUnavailableGroupStaysUnavailableWithWaitingWork() {
+        // The type did not apply at the join, so its group stays stored unavailable; it applies again at the read.
+        present("p");
+        side.notApplying.add(T);
+        join("p");
+        side.notApplying.remove(T);
+        side.waiting.add("p");
+        assertEquals(GroupAvailability.UNAVAILABLE, availability("p", T));
+    }
+
+    @Test
+    void aWaitingEntityReadsFailedWhenTheGroupFailedOrTheQuestionFails() {
+        present("p");
+        join("p");
+        side.waiting.add("p");
+        side.appliesThrows = true;
+        assertEquals(GroupAvailability.FAILED, availability("p", T), "appliesTo failing");
+        side.appliesThrows = false;
+        side.waiting.remove("p");
+        side.answers(T).add("no");
+        change("p", T, values("s#0", 2));
+        side.waiting.add("p");
+        assertEquals(GroupAvailability.FAILED, availability("p", T), "a failed group");
+    }
+
+    @Test
+    void anUpdatingGroupWithWaitingWorkReadsPending() {
+        present("p");
+        join("p");
+        List<GroupAvailability> seen = new ArrayList<>();
+        boundary.update("p", () -> boundary.commit("p", Collections.singleton(T), () -> {
+            seen.add(availability("p", T));
+            side.waiting.add("p");
+            seen.add(availability("p", T));
+            side.waiting.remove("p");
+        }));
+        assertEquals(Arrays.asList(GroupAvailability.UPDATING, GroupAvailability.PENDING), seen);
+    }
+
+    @Test
+    void aReadInsideSettledIsPendingOnlyWhenMoreWorkWaits() {
+        present("p");
+        join("p");
+        change("p", T, values("s#0", 2));
+        assertEquals(GroupAvailability.AVAILABLE, readInSettled.availability());
+        side.waiting.add("p");
+        change("p", T, values("s#0", 3));
+        assertEquals(GroupAvailability.PENDING, readInSettled.availability());
     }
 }

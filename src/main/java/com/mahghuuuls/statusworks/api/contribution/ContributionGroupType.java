@@ -32,7 +32,10 @@ public interface ContributionGroupType extends ContributionType {
 
     /**
      * The group of this type on the entity is committed: {@code group} holds every value by contribution key,
-     * read-only; empty means the entity has none of this type. The group is available while this runs.
+     * read-only; empty means the entity has none of this type. The group is available while this runs, unless more
+     * contribution work for the entity is waiting; then it is {@link GroupAvailability#PENDING} and may change again:
+     * read the group again later. When the waiting work does not change this type, no further signal comes (see
+     * {@code ContributionService#group}).
      */
     void settled(EntityLivingBase entity, Map<String, Double> group);
 }

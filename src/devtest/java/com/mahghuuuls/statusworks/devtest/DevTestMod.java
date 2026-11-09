@@ -206,6 +206,7 @@ public class DevTestMod {
         MinecraftForge.EVENT_BUS.register(new GroupTestTypes.JoinCanceler());
         MinecraftForge.EVENT_BUS.register(new GroupTestTypes.ManaTicker());
         MinecraftForge.EVENT_BUS.register(new GroupTestTypes.CloneKeeper());
+        MinecraftForge.EVENT_BUS.register(new GroupTestTypes.Watcher());
         registerPool(loggedPool(PoolDefinition.builder(id("pspeed"))).capacity(100).start(PoolStart.FULL)
                 .fixed(Direction.DRAIN, 5)
                 .contribute(Contribution.attribute("generic.movementSpeed", AttributeOperation.MULTIPLY_TOTAL,

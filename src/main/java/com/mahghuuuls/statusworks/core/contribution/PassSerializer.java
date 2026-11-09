@@ -23,6 +23,9 @@ import java.util.function.Predicate;
  * deferred passes themselves) waits for the next one. Entities are compared by identity, so a new entity object for
  * the same UUID is a different entity.</p>
  *
+ * <p>{@link #hasWaitingWork(Object)} tells whether passes for an entity still have to run: a follow-up of its running
+ * pass, deferred passes, or deferred passes due in a drain in progress that have not had their turn yet.</p>
+ *
  * <p>Used on the server thread only.</p>
  */
 final class PassSerializer<E> {
@@ -54,14 +57,26 @@ final class PassSerializer<E> {
     private final Set<E> running = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Map<E, Pending> pending = new IdentityHashMap<>();
     private final Map<E, Pending> deferred = new IdentityHashMap<>();
+    /** The entities taken from {@link #deferred} by a drain in progress whose turn has not come yet. */
+    private final Set<E> due = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Consumer<E> onLimit;
+    private final Consumer<E> onDrain;
     private long tick;
 
     /**
      * @param onLimit told when an entity reached the limit and its remaining passes were deferred
      */
     PassSerializer(Consumer<E> onLimit) {
+        this(onLimit, e -> { });
+    }
+
+    /**
+     * @param onLimit told when an entity reached the limit and its remaining passes were deferred
+     * @param onDrain told when an entity's deferred passes start to run
+     */
+    PassSerializer(Consumer<E> onLimit, Consumer<E> onDrain) {
         this.onLimit = onLimit;
+        this.onDrain = onDrain;
     }
 
     /**
@@ -139,7 +154,8 @@ final class PassSerializer<E> {
 
     /**
      * Runs what each entity left waiting since an earlier tick, as a new chain, for the entities that are still where
-     * a pass may run. What was deferred during this tick stays waiting for the next tick.
+     * a pass may run. What was deferred during this tick stays waiting for the next tick. Until its turn, each due
+     * entity still has waiting work; when a pass of the drain fails, the passes that had no turn yet are dropped.
      */
     void runDeferred(Predicate<E> stillHere) {
         if (deferred.isEmpty()) {
@@ -155,16 +171,37 @@ final class PassSerializer<E> {
                 it.remove();
             }
         }
-        for (int i = 0; i < dueEntities.size(); i++) {
-            E entity = dueEntities.get(i);
-            Pending p = duePasses.get(i);
-            if (!stillHere.test(entity) || p.isEmpty()) {
-                continue;
+        due.addAll(dueEntities);
+        try {
+            for (int i = 0; i < dueEntities.size(); i++) {
+                E entity = dueEntities.get(i);
+                Pending p = duePasses.get(i);
+                due.remove(entity);
+                if (!stillHere.test(entity) || p.isEmpty()) {
+                    continue;
+                }
+                onDrain.accept(entity);
+                Runnable first = p.next();
+                deferred.put(entity, p);
+                request(entity, first, p.again);
             }
-            Runnable first = p.next();
-            deferred.put(entity, p);
-            request(entity, first, p.again);
+        } finally {
+            due.clear();
         }
+    }
+
+    /**
+     * Whether passes for the entity still have to run: a plain pass or kept units recorded while its pass runs, passes
+     * deferred by the limit, or deferred passes due in the drain in progress that have not had their turn. The pass
+     * that is running is not waiting work, and neither is its empty bookkeeping.
+     */
+    boolean hasWaitingWork(E entity) {
+        Pending p = pending.get(entity);
+        if (p != null && !p.isEmpty()) {
+            return true;
+        }
+        Pending d = deferred.get(entity);
+        return (d != null && !d.isEmpty()) || due.contains(entity);
     }
 
     boolean isRunning(E entity) {

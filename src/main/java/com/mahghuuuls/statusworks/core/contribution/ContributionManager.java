@@ -44,7 +44,7 @@ import java.util.UUID;
  *
  * <p>Each pass runs as an update of {@link GroupBoundary}, which sends the group signals of the types that asked
  * for them: the invalidations before the pass changes anything, the settled groups after its notices, and failed
- * groups when Statusworks cannot finish the update.</p>
+ * groups when Statusworks cannot finish the update. While passes for an entity wait, its groups read pending.</p>
  *
  * <p>It also owns the health policy (raising maximum health never refills; lowering it below current health
  * brings health down), the pool update step, and the restore order: the record is reapplied while the entity's
@@ -61,7 +61,8 @@ public final class ContributionManager implements ContributionService {
     private final CallbackRunner callbacks;
     private final DiagnosticLog log;
     private final Warnings warnings;
-    private final PassSerializer<EntityLivingBase> passes = new PassSerializer<>(this::passLimitReached);
+    private final PassSerializer<EntityLivingBase> passes = new PassSerializer<>(this::passLimitReached,
+            this::deferredPassesRun);
     private MarkContributions marks = MarkContributions.NONE;
     /** The contribution type whose notice or group signal ran last, named by the pass-limit warning. */
     private String lastNoticeType = "none";
@@ -241,6 +242,16 @@ public final class ContributionManager implements ContributionService {
                 + " from "
                 + lastNoticeType + "); after " + PassSerializer.MAX_PASSES_IN_A_ROW
                 + " passes in a row the next one waits for the next tick");
+        if (log.isEnabled()) {
+            log.note("passes-deferred entity=" + entity.getName() + "#" + entity.getEntityId() + " after="
+                    + PassSerializer.MAX_PASSES_IN_A_ROW + " last-type=" + lastNoticeType);
+        }
+    }
+
+    private void deferredPassesRun(EntityLivingBase entity) {
+        if (log.isEnabled()) {
+            log.note("passes-run entity=" + entity.getName() + "#" + entity.getEntityId() + " deferred");
+        }
     }
 
     /**
@@ -445,6 +456,11 @@ public final class ContributionManager implements ContributionService {
         @Override
         public Map<String, Double> committed(EntityLivingBase entity, String typeId) {
             return new LinkedHashMap<>(currentValues(entity, typeId));
+        }
+
+        @Override
+        public boolean waiting(EntityLivingBase entity) {
+            return passes.hasWaitingWork(entity);
         }
 
         @Override

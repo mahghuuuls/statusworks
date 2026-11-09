@@ -65,6 +65,9 @@ public final class GroupBoundary<E> {
         /** The committed values of the type on the entity, by contribution key. */
         Map<String, Double> committed(E entity, String typeId);
 
+        /** Whether contribution work for the entity is waiting (the pass serializer's answer). */
+        boolean waiting(E entity);
+
         /** The entity's group state, or null when it has none (client side, no capability). */
         @Nullable
         GroupStates states(E entity);
@@ -287,8 +290,10 @@ public final class GroupBoundary<E> {
     }
 
     /**
-     * The group read: available only for a joined, current object whose type applies and is settled. A type that
-     * no longer applies reads unavailable; when the question fails, a non-unavailable group reads failed.
+     * The group read: available only for a joined, current object whose type applies and is settled, with no
+     * contribution work waiting. A type that no longer applies reads unavailable; when the question fails, a
+     * non-unavailable group reads failed. Then a failed group reads failed, waiting work reads pending, and the rest
+     * reads its stored state.
      */
     public ContributionGroup read(E entity, String typeId) {
         GroupStates states = live(entity);
@@ -303,8 +308,11 @@ public final class GroupBoundary<E> {
         if (applies == Boolean.FALSE) {
             return ContributionGroup.of(GroupAvailability.UNAVAILABLE);
         }
-        if (applies == ERROR) {
+        if (applies == ERROR || a == GroupAvailability.FAILED) {
             return ContributionGroup.of(GroupAvailability.FAILED);
+        }
+        if (side.waiting(entity)) {
+            return ContributionGroup.of(GroupAvailability.PENDING);
         }
         return a == GroupAvailability.AVAILABLE ? ContributionGroup.available(side.committed(entity, typeId))
                 : ContributionGroup.of(a);

@@ -3,6 +3,7 @@ package com.mahghuuuls.statusworks.devtest;
 import com.mahghuuuls.statusworks.api.StatusworksApi;
 import com.mahghuuuls.statusworks.api.contribution.ContributionGroup;
 import com.mahghuuuls.statusworks.api.contribution.ContributionGroupType;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
@@ -13,6 +14,7 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Map;
 
 /**
@@ -22,9 +24,14 @@ import java.util.Map;
  * {@code grouped} confirms; {@code flaky} can be told to throw or refuse a number of times, or always;
  * {@code mana} stands for a mana mod: it keeps a saved 110 and a maximum of 120 plus its group, and accepts the saved
  * value only when its group is available; {@code loop}'s value notice removes a stack and its end notice applies the
- * status again, while switched on. Also a switch that cancels the next player join, switches that make the next
+ * status again, while switched on, or for a counted number of notices ({@code loop} also applies to mobs named
+ * "stwloop..."). Also a switch that cancels the next player join, switches that make the next
  * {@code grouped} settled signal throw or add a stack, a keeper of the last replaced player object, and a switch
  * that applies {@code loopstatus} at the start of the next server tick (before the worlds tick).
+ *
+ * <p>Probes for the pending read (1.3.0): a watch that logs every group's availability at fixed points of the tick;
+ * a counted loop whose last notice can withdraw {@code manacurse} instead, so the withdrawal waits in a pass deferred
+ * by the pass limit; and two looping peers whose loop notices read each other's {@code loop} group.</p>
  */
 final class GroupTestTypes {
 
@@ -70,6 +77,17 @@ final class GroupTestTypes {
     static EntityPlayer lastReplaced;
     /** At the start of the next server tick, applies one {@code loopstatus} to this player. */
     static EntityPlayer loopAtTickStart;
+    /** Counted loops: the loop notices each entity still acts on; at the last one its loop stops. */
+    static final Map<EntityLivingBase, Integer> LOOP_BUDGET = new IdentityHashMap<>();
+    /** The entity whose last counted loop notice withdraws {@code manacurse} instead of continuing the loop. */
+    static EntityLivingBase loopClearManaFor;
+    /** Two looping entities whose loop notices read each other's {@code loop} group; null when off. */
+    static EntityLivingBase peerA;
+    static EntityLivingBase peerB;
+    /** The watch probe: ticks left, the player, and an optional mob watched with it. */
+    static int watchTicks;
+    static EntityPlayer watchPlayer;
+    static EntityLivingBase watchMob;
 
     private GroupTestTypes() {
     }
@@ -92,9 +110,81 @@ final class GroupTestTypes {
     static void register() {
         for (String name : NAMES) {
             BEHAVIOR.put(DevTestMod.id(name), new Behavior());
+            String mobPrefix = "living".equals(name) ? "stw" : "loop".equals(name) ? "stwloop" : null;
             DevTestMod.LOGGER.info("[stw-devtest] registered group type {}: {}", name,
-                    StatusworksApi.registerContributionType(new Type(DevTestMod.id(name), !"living".equals(name))));
+                    StatusworksApi.registerContributionType(new Type(DevTestMod.id(name), mobPrefix)));
         }
+    }
+
+    /** Switches every loop off: the runaway loop, counted loops, the peers, the mana withdrawal. */
+    static void loopsOff() {
+        loopOn = false;
+        loopAtTickStart = null;
+        LOOP_BUDGET.clear();
+        loopClearManaFor = null;
+        peerA = null;
+        peerB = null;
+    }
+
+    /**
+     * Whether this loop notice continues the loop. A counted loop of n spends n notices, so it runs n + 1 passes: the
+     * n-th notice still continues the loop, or for {@link #loopClearManaFor} withdraws {@code manacurse} instead (a
+     * change that also needs a pass), and the notice of the pass that follows stops it.
+     */
+    static boolean loopActs(EntityLivingBase entity) {
+        Integer left = LOOP_BUDGET.get(entity);
+        if (left == null) {
+            return loopOn;
+        }
+        left--;
+        if (left > 0) {
+            LOOP_BUDGET.put(entity, left);
+            DevTestMod.LOGGER.info("[stw-devtest] loop_count entity={} left={} tick={}", entity.getName(), left,
+                    tick());
+            return true;
+        }
+        LOOP_BUDGET.remove(entity);
+        if (entity == loopClearManaFor) {
+            loopClearManaFor = null;
+            DevTestMod.LOGGER.info("[stw-devtest] loop_count entity={} left=0 withdraws manacurse tick={}",
+                    entity.getName(), tick());
+            StatusworksApi.statuses().clear(entity, DevTestMod.id("manacurse"));
+            return false;
+        }
+        DevTestMod.LOGGER.info("[stw-devtest] loop_count entity={} left=0 last tick={}", entity.getName(), tick());
+        return true;
+    }
+
+    /** While two peers loop, a loop notice of one reads the other's {@code loop} group. */
+    static void peerRead(EntityLivingBase reader) {
+        EntityLivingBase target = reader == peerA ? peerB : reader == peerB ? peerA : null;
+        if (target == null) {
+            return;
+        }
+        DevTestMod.LOGGER.info("[stw-devtest] loop_peer_read reader={} target={} availability={} tick={}",
+                reader.getName(), target.getName(),
+                StatusworksApi.contributions().group(target, DevTestMod.id("loop")).availability(), tick());
+    }
+
+    /** One watch line: every group type's availability on the entity, at a named point of the tick. */
+    static void watchLine(String phase, EntityLivingBase entity) {
+        StringBuilder line = new StringBuilder("watch tick=").append(tick()).append(" phase=").append(phase)
+                .append(" entity=").append(entity.getName()).append(" obj=").append(obj(entity));
+        for (String name : NAMES) {
+            line.append(' ').append(name).append('=')
+                    .append(StatusworksApi.contributions().group(entity, DevTestMod.id(name)).availability());
+        }
+        DevTestMod.LOGGER.info("[stw-devtest] {}", line);
+    }
+
+    /** The loaded living entity with this custom name in the world, or null. */
+    static EntityLivingBase named(net.minecraft.world.World world, String name) {
+        for (Entity e : world.loadedEntityList) {
+            if (e instanceof EntityLivingBase && e.hasCustomName() && name.equals(e.getCustomNameTag())) {
+                return (EntityLivingBase) e;
+            }
+        }
+        return null;
     }
 
     /** Tries the mana model's first acceptance and logs the outcome. */
@@ -125,11 +215,12 @@ final class GroupTestTypes {
 
     static final class Type implements ContributionGroupType {
         private final String id;
-        private final boolean playersOnly;
+        /** Mobs whose name starts with this also apply; null: players only. */
+        private final String mobPrefix;
 
-        Type(String id, boolean playersOnly) {
+        Type(String id, String mobPrefix) {
             this.id = id;
-            this.playersOnly = playersOnly;
+            this.mobPrefix = mobPrefix;
         }
 
         @Override
@@ -142,7 +233,7 @@ final class GroupTestTypes {
             if (entity instanceof EntityPlayer) {
                 return true;
             }
-            return !playersOnly && entity.hasCustomName() && entity.getCustomNameTag().startsWith("stw");
+            return mobPrefix != null && entity.hasCustomName() && entity.getCustomNameTag().startsWith(mobPrefix);
         }
 
         @Override
@@ -184,16 +275,22 @@ final class GroupTestTypes {
         public void onValue(EntityLivingBase entity, String key, double value) {
             DevTestMod.LOGGER.info("[stw-devtest] group_value type={} entity={} key={} value={}", id,
                     entity.getName(), key, value);
-            if (loopOn && id.equals(DevTestMod.id("loop"))) {
-                StatusworksApi.statuses().remove(entity, DevTestMod.id("loopstatus"), 1);
+            if (id.equals(DevTestMod.id("loop"))) {
+                peerRead(entity);
+                if (loopActs(entity)) {
+                    StatusworksApi.statuses().remove(entity, DevTestMod.id("loopstatus"), 1);
+                }
             }
         }
 
         @Override
         public void onEnd(EntityLivingBase entity, String key) {
             DevTestMod.LOGGER.info("[stw-devtest] group_end type={} entity={} key={}", id, entity.getName(), key);
-            if (loopOn && id.equals(DevTestMod.id("loop"))) {
-                StatusworksApi.statuses().apply(entity, DevTestMod.id("loopstatus"), 1);
+            if (id.equals(DevTestMod.id("loop"))) {
+                peerRead(entity);
+                if (loopActs(entity)) {
+                    StatusworksApi.statuses().apply(entity, DevTestMod.id("loopstatus"), 1);
+                }
             }
         }
     }
@@ -213,6 +310,35 @@ final class GroupTestTypes {
             }
             if (event.phase == TickEvent.Phase.END && manaArmedFor != null) {
                 tryAcceptMana(manaArmedFor);
+            }
+        }
+    }
+
+    /**
+     * The watch probe: while it runs, logs the groups of the player (and the watched mob) at the server tick start, in
+     * the player's own server tick (after it, as a player-tick verifier would), and at the server tick end.
+     */
+    static final class Watcher {
+        @SubscribeEvent
+        public void onServerTick(TickEvent.ServerTickEvent event) {
+            if (watchTicks <= 0 || watchPlayer == null) {
+                return;
+            }
+            String phase = event.phase == TickEvent.Phase.START ? "start" : "end";
+            watchLine(phase, watchPlayer);
+            if (watchMob != null) {
+                watchLine(phase, watchMob);
+            }
+            if (event.phase == TickEvent.Phase.END && --watchTicks == 0) {
+                DevTestMod.LOGGER.info("[stw-devtest] watch_done tick={}", tick());
+            }
+        }
+
+        @SubscribeEvent
+        public void onPlayerTick(TickEvent.PlayerTickEvent event) {
+            if (watchTicks > 0 && event.phase == TickEvent.Phase.END && !event.player.world.isRemote
+                    && event.player == watchPlayer) {
+                watchLine("player", watchPlayer);
             }
         }
     }

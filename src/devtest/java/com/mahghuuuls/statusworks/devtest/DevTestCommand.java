@@ -43,6 +43,13 @@ import java.util.function.Consumer;
  *   <li>{@code mana <reset|accept|arm>}, {@code loop <on|off|starttick>}, {@code canceljoin [mob]},
  *   {@code deepchain}: the mana model, the runaway loop (also started at the next tick start), a canceled next join,
  *   and the 9-deep callback chain.</li>
+ *   <li>{@code loop count <n> [clearmana] [arm]}: a loop on the sender for n loop notices, started now; with
+ *   {@code clearmana} the n-th notice withdraws {@code manacurse} instead (n = 8: the withdrawal runs in a pass
+ *   deferred by the pass limit); with {@code arm}, the mana model is armed first. {@code loop peer <mob> [n]}: the
+ *   sender and the named mob (its name must start with {@code stwloop}) loop for n notices each (default 12),
+ *   started now, and each loop notice reads the other's {@code loop} group. {@code loop off} stops every loop.</li>
+ *   <li>{@code watch <ticks> [mob]}: logs every group's availability on the sender (and the named mob) at each
+ *   server tick start, in the sender's own tick, and at each tick end, for that many ticks.</li>
  * </ul>
  */
 final class DevTestCommand extends CommandBase {
@@ -56,7 +63,9 @@ final class DevTestCommand extends CommandBase {
     public String getUsage(ICommandSender sender) {
         return "/stwdev <dead|nonliving|fakeplayer|unknown|spawn <n>|bulk <duration>|bulkpool|bulkmark"
                 + "|load [clear|count]|group <type> <ok|throw|refuse> [times]|group read|group readold"
-                + "|settled <add|throw|off>|mana <reset|accept|arm>|loop <on|off|starttick>|canceljoin [mob]|deepchain>";
+                + "|settled <add|throw|off>|mana <reset|accept|arm>|loop <on|off|starttick>"
+                + "|loop count <n> [clearmana] [arm]|loop peer <stwloop mob> [n]|watch <ticks> [mob]|canceljoin [mob]"
+                + "|deepchain>";
     }
 
     @Override
@@ -221,8 +230,49 @@ final class DevTestCommand extends CommandBase {
                 break;
             }
             case "loop": {
+                if (args.length >= 3 && "count".equals(args[1])) {
+                    EntityPlayer player = getCommandSenderAsPlayer(sender);
+                    int n = parseInt(args[2], 1);
+                    java.util.List<String> opts = java.util.Arrays.asList(args).subList(3, args.length);
+                    GroupTestTypes.LOOP_BUDGET.put(player, n);
+                    GroupTestTypes.loopClearManaFor = opts.contains("clearmana") ? player : null;
+                    if (opts.contains("arm")) {
+                        GroupTestTypes.manaArmedFor = player;
+                    }
+                    log(sender, "loop count " + n + " clearmana=" + opts.contains("clearmana") + " arm="
+                            + opts.contains("arm") + " tick=" + GroupTestTypes.tick());
+                    statuses.apply(player, DevTestMod.id("loopstatus"), 1);
+                    log(sender, "loop count started; budget_left=" + GroupTestTypes.LOOP_BUDGET.get(player)
+                            + " tick=" + GroupTestTypes.tick());
+                    break;
+                }
+                if (args.length >= 3 && "peer".equals(args[1])) {
+                    EntityPlayer player = getCommandSenderAsPlayer(sender);
+                    net.minecraft.entity.EntityLivingBase mob = GroupTestTypes.named(world, args[2]);
+                    if (mob == null) {
+                        throw new CommandException("no loaded mob named " + args[2]);
+                    }
+                    if (!args[2].startsWith("stwloop")) {
+                        throw new CommandException("the loop type applies only to mobs named stwloop...");
+                    }
+                    int n = args.length > 3 ? parseInt(args[3], 1) : 12;
+                    GroupTestTypes.LOOP_BUDGET.put(player, n);
+                    GroupTestTypes.LOOP_BUDGET.put(mob, n);
+                    GroupTestTypes.peerA = player;
+                    GroupTestTypes.peerB = mob;
+                    log(sender, "loop peer " + args[2] + " n=" + n + " tick=" + GroupTestTypes.tick());
+                    statuses.apply(player, DevTestMod.id("loopstatus"), 1);
+                    statuses.apply(mob, DevTestMod.id("loopstatus"), 1);
+                    log(sender, "loop peer started tick=" + GroupTestTypes.tick());
+                    break;
+                }
                 if (args.length < 2 || !java.util.Arrays.asList("on", "off", "starttick").contains(args[1])) {
                     throw new WrongUsageException(getUsage(sender));
+                }
+                if ("off".equals(args[1])) {
+                    GroupTestTypes.loopsOff();
+                    log(sender, "loop off: every loop stopped");
+                    break;
                 }
                 if ("starttick".equals(args[1])) {
                     GroupTestTypes.loopOn = true;
@@ -241,6 +291,25 @@ final class DevTestCommand extends CommandBase {
                 GroupTestTypes.settledAddArmed = "add".equals(args[1]);
                 GroupTestTypes.settledThrowArmed = "throw".equals(args[1]);
                 log(sender, "settled " + args[1] + ": " + GroupTestTypes.switches());
+                break;
+            }
+            case "watch": {
+                if (args.length < 2) {
+                    throw new WrongUsageException(getUsage(sender));
+                }
+                EntityPlayer player = getCommandSenderAsPlayer(sender);
+                net.minecraft.entity.EntityLivingBase mob = null;
+                if (args.length > 2) {
+                    mob = GroupTestTypes.named(world, args[2]);
+                    if (mob == null) {
+                        throw new CommandException("no loaded mob named " + args[2]);
+                    }
+                }
+                GroupTestTypes.watchPlayer = player;
+                GroupTestTypes.watchMob = mob;
+                GroupTestTypes.watchTicks = parseInt(args[1], 1);
+                log(sender, "watch ticks=" + GroupTestTypes.watchTicks + " mob=" + (mob == null ? "none"
+                        : mob.getName()) + " tick=" + GroupTestTypes.tick());
                 break;
             }
             case "canceljoin": {
