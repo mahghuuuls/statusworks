@@ -4,7 +4,7 @@ This guide is for mod authors. Statusworks gives your mod statuses, pools, marks
 
 ## Setup
 
-- Compile against the Statusworks jar and declare `dependencies = "required-after:statusworks"` in your `@Mod`.
+- Compile against the Statusworks jar and declare `dependencies = "required-after:statusworks"` in your `@Mod`; a mod that uses the status snapshot declares `required-after:statusworks@[1.4.0,)`, so with an older Statusworks, Forge stops at startup with a missing-dependency error instead of failing later.
 - Everything public is under `com.mahghuuuls.statusworks.api`. Nothing outside that package is API.
 - Register definitions during startup (pre-init to post-init). Definitions freeze when loading completes; a later registration is refused.
 - Operations run on the server. On a client world they do nothing.
@@ -33,13 +33,39 @@ StatusworksApi.registerStatus(StatusDefinition.builder("mymod:rage")
 
 | Service | Main methods |
 | --- | --- |
-| `StatusworksApi.statuses()` | `apply(entity, id, stacks)`, `apply(entity, id, stacks, source, ticks)`, `remove`, `setCount`, `clear`, `has`, `count`, `remainingTicks`, `sources` |
+| `StatusworksApi.statuses()` | `apply(entity, id, stacks)`, `apply(entity, id, stacks, source, ticks)`, `remove`, `setCount`, `clear`, `has`, `count`, `remainingTicks`, `sources`, `snapshot(entity)` (see Status snapshot) |
 | `StatusworksApi.pools()` | `add`, `subtract`, `set`, `setCapacity`, `setLifetime`, `extendLifetime`, `pause`, `resume`, `remove`, `has`, `get` (a `PoolSnapshot`) |
 | `StatusworksApi.marks()` | `mark(source, target, id)`, `mark(source, target, id, ticks)`, `unmark`, `clearSource`, `clearTarget`, `isMarked`, `targets`, `sources`, `targetEntities`, `sourceEntities`, `targetCount`, `sourceCount` |
 | `StatusworksApi.cooldowns()` | `start`, `restart`, `extend`, `reduce`, `clear`, `startIfReady`, `isRunning`, `remaining` |
 | `StatusworksApi.contributions()` | `currentValues(entity, typeId)`, `group(entity, typeId)` |
 
 Change methods return a result object with `succeeded()` and what changed: `StackChange` (`added()`, `rejected()`), `CountChange`, `PoolChange`, and `CooldownChange` (values before and after), each with `failure()` saying why it did not succeed, and `MarkResult` with `outcome()`, `replacedTarget()`, and `reason()` (set only when rejected). `unmark`, `isMarked`, `clearSource`, `clearTarget`, and `startIfReady` return a boolean or a count. Queries change nothing.
+
+### Status snapshot
+
+`StatusworksApi.statuses().snapshot(entity)` (added in 1.4.0) returns a `StatusSnapshot` of every status on one living entity that its author did not hide, for a mod that shows statuses its own way, such as a HUD of its own or a list above mobs:
+
+```java
+StatusSnapshot snapshot = StatusworksApi.statuses().snapshot(mob);   // on the server thread
+for (StatusSnapshot.Entry row : snapshot.entries()) {
+    String name = row.name();             // a translation key when row.nameIsKey(): translate it on the client
+    int stacks = row.count();
+    int ticks = row.remainingTicks();     // -1: the status does not expire
+    for (StatusSnapshot.Group group : row.groups()) {
+        // per-source statuses only: group.source(), group.count(), group.remainingTicks()
+    }
+}
+```
+
+- Each `Entry` has `definitionId()`, `name()` and `nameIsKey()` (a definition without a name gives its id's path, as Statusworks' HUD shows it, never a key), `iconItem()` and `iconMeta()` or `iconTexture()` (either may be null), `count()` (the total), `remainingTicks()`, `harmful()`, `priority()`, `showCount()` and `showTime()` (the author's choice of what the HUD shows), and `groups()`.
+- For a per-source status the total is the sum of the groups and the remaining time is the soonest group's; a shared status has no groups. Rows come in registration order, not by priority.
+- A status whose definition is `hidden()` is left out. A player's own HUD hiding (`hiddenEntries`) is not applied: it is that player's view, not the author's.
+- Names are given as the definition writes them and are not translated: on a dedicated server there is no language to translate them into.
+- Call it on the server thread. It reads only that entity's state and the definitions it names, scans no other entity or chunk, costs about as much as the number of statuses on that entity, and changes nothing. The snapshot is a copy that holds no entity, state or definition, and its lists cannot be changed.
+- It is empty (`StatusSnapshot.EMPTY`, `isEmpty()`) on the client, for an entity that is not living, for a fake player, and for an entity object that is not in a world: a mob whose chunk unloaded, the old object after a dimension change, a player object replaced at a respawn. This differs from the per-id queries, which still read such an object. It already lists the statuses of a mob that Forge is adding to a world, so you can read it in `PlayerEvent.StartTracking` to send the rows to a player who starts seeing that mob.
+- A dead entity still in its world lists what it kept: nothing for a mob, the kept statuses (death rule `keep`) of a player until it respawns.
+- Statusworks sends no snapshot to clients; your mod does its own syncing and decides who may see what. Two snapshots with the same rows are equal, but the rows include remaining times, which change every tick for a timed status: to send only on change, compare the rows without their times. A countdown on the client from a remaining time is an estimate: a status's time passes only while the game updates its entity, so resend the rows when they change, and from time to time to correct the countdown.
+- It covers statuses only, not pools, marks or cooldowns, and it does not include a status's description or particle settings. The constructors of `StatusSnapshot`, `Entry` and `Group` are for Statusworks and for test doubles; they may gain parameters in a later version, so read snapshots rather than build them.
 
 ## Callbacks
 

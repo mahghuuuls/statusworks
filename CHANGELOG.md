@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-18
+
+Client and server must run the same Statusworks version: update both to 1.4.0.
+
+### Added
+
+- A status snapshot for mods that show statuses their own way. On the server, `StatusworksApi.statuses().snapshot(entity)` returns a `StatusSnapshot`: one row per status active on that living entity, with its name, icon, count, remaining time, harmful flag, priority, display flags and per-source groups (see the [Java guide](docs/java-api.md#status-snapshot)). Statuses whose author set `hidden()` are left out; a player's own HUD hiding is not applied. The snapshot is a copy: it changes nothing and sends nothing to clients.
+- The snapshot is empty on the client, for an entity that is not living, for a fake player, and for an entity object that is not in a world (a mob whose chunk unloaded, the old object after a dimension change or a respawn). It already lists a mob's statuses while Forge adds it to a world, so a mod can read it in `PlayerEvent.StartTracking`. A dead mob lists none; a dead player lists the statuses it keeps until it respawns.
+
+### Changed
+
+- `StatusService` has a new default method, `snapshot(Entity)`. Existing implementations of `StatusService`, such as test doubles, still compile; their `snapshot` returns an empty snapshot. A mod that uses the snapshot should declare `required-after:statusworks@[1.4.0,)`.
+- The mod's logo no longer shows small icons in the cauldron: only the green liquid.
+
 ## [1.3.0] - 2026-11-09
 
 Client and server must run the same Statusworks version: update both to 1.3.0.

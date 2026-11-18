@@ -67,6 +67,7 @@ The Java API in `com.mahghuuuls.statusworks.api` gives your mod the same four ki
 - Register your own contribution type, so statuses and pools drive your own stats, such as mana regeneration.
 - If your mod computes one result from all of a contribution type's values on an entity, `ContributionGroupType` tells it before those values change and hands it the complete set afterwards, so it can tell when that result is current.
 - Get callbacks as lambdas when state changes.
+- Take a status snapshot on the server: every status on a living entity that its author did not hide, with its name, icon, stacks, remaining time and per-source groups. Your mod sends it to the players who should see it, to show statuses your own way.
 - Read the player's visible entries on the client to draw your own visuals.
 
 Guide: [Using Statusworks from a Java mod](https://github.com/mahghuuuls/statusworks/blob/main/docs/java-api.md). Example: [JavaExample.java](https://github.com/mahghuuuls/statusworks/blob/main/examples/JavaExample.java).
