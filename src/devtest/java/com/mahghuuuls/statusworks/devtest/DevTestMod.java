@@ -207,6 +207,7 @@ public class DevTestMod {
         MinecraftForge.EVENT_BUS.register(new GroupTestTypes.ManaTicker());
         MinecraftForge.EVENT_BUS.register(new GroupTestTypes.CloneKeeper());
         MinecraftForge.EVENT_BUS.register(new GroupTestTypes.Watcher());
+        MinecraftForge.EVENT_BUS.register(new SnapshotProbe.TrackingProbe());
         registerPool(loggedPool(PoolDefinition.builder(id("pspeed"))).capacity(100).start(PoolStart.FULL)
                 .fixed(Direction.DRAIN, 5)
                 .contribute(Contribution.attribute("generic.movementSpeed", AttributeOperation.MULTIPLY_TOTAL,
@@ -287,6 +288,12 @@ public class DevTestMod {
         registerMark(loggedMark(MarkDefinition.builder(id("mcurse"))).defaultDuration(36000)
                 .presentation(Presentation.builder().name("Curse").iconItem("minecraft:skull", 1).harmful().build())
                 .build());
+        // A status with a texture icon, a translation key as its name, and the count and time hidden by its author,
+        // for the status snapshot (1.4.0).
+        register(logged(StatusDefinition.builder(id("stexture"))).limit(5).defaultDuration(6000)
+                .presentation(Presentation.builder().nameKey("statusworks_devtest.snapshot.texture")
+                        .iconTexture("minecraft:textures/items/bucket_water.png").priority(4).showCount(false)
+                        .showTime(false).build()).build());
         for (String filler : new String[]{"fill1", "fill2", "fill3"}) {
             register(StatusDefinition.builder(id(filler)).defaultDuration(6000)
                     .presentation(Presentation.builder().priority(9).build()).build());
@@ -353,6 +360,8 @@ public class DevTestMod {
         DevTestLoad.reset();
         GroupTestTypes.lastReplaced = null;
         GroupTestTypes.loopAtTickStart = null;
+        SnapshotProbe.held = null;
+        SnapshotProbe.kept = null;
     }
 
     /** Adds callbacks that log each status point as {@code [stw-devtest] <point> <context>}. */

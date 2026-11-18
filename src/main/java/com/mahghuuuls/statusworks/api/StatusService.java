@@ -8,8 +8,9 @@ import java.util.UUID;
 
 /**
  * Operations and queries on statuses. Every method works on the logical server only; on the client, and for a
- * dead entity, a non-living entity, or an unknown or disabled definition, operations report failure and queries
- * report nothing. Queries never change state. Call it from the server thread only, as Minecraft's own world
+ * dead entity, a non-living entity, or an unknown or disabled definition, operations report failure and per-id
+ * queries report nothing (a dead player's kept statuses still read until the respawn). Queries never change
+ * state. Call it from the server thread only, as Minecraft's own world
  * changes require.
  */
 public interface StatusService {
@@ -65,4 +66,27 @@ public interface StatusService {
 
     /** The groups of a per-source status by source UUID ({@link #NO_SOURCE} for the no-source group). */
     List<UUID> sources(Entity entity, String id);
+
+    /**
+     * A read-only snapshot of the visible statuses active on the entity now, with each status's presentation,
+     * total count, remaining time and, for a per-source status, its groups (see {@link StatusSnapshot}). Every
+     * active status whose definition is not author-hidden is listed, whether or not it has particles; a player's
+     * own HUD hiding does not apply. Names are given as the definition writes them, text or translation key, and are
+     * not translated; a definition without a name gives the id's path, as Statusworks' HUD shows it. Taking a
+     * snapshot changes nothing.
+     *
+     * <p>Server thread only. The snapshot is empty on the client, for a non-living entity, a fake player or an
+     * entity without Statusworks state, and for an entity object that is not in a world (before its join, after it
+     * left, for example a mob whose chunk unloaded, or a player object replaced at a respawn); unlike the per-id
+     * queries, which still read an object that left. From the entity's join on, also while Forge reports the added
+     * entity to listeners such as {@code PlayerEvent.StartTracking}, it lists the entity's statuses. A dead entity
+     * still in its world lists what it kept: nothing for a mob, the kept statuses of a player until the respawn. It
+     * reads only this entity's own state. Nothing is sent to clients: a mod that shows the statuses elsewhere
+     * synchronizes them itself, and decides what it shows to whom.</p>
+     *
+     * @since 1.4.0
+     */
+    default StatusSnapshot snapshot(Entity entity) {
+        return StatusSnapshot.EMPTY;
+    }
 }

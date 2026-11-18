@@ -8,7 +8,8 @@ import javax.annotation.Nullable;
 
 /**
  * The entity part of checking an operation or query, shared by every kind: logical server, living entity, not a
- * fake player, has tracked state, and alive when the call changes state.
+ * fake player, has tracked state, and alive when the call changes state. A snapshot also requires the object to be in
+ * a world ({@link #checkInWorld}); the per-id queries keep reading an object's state after it left.
  */
 public final class EntityTargets {
 
@@ -58,5 +59,17 @@ public final class EntityTargets {
             return Checked.failed("entity " + entity.getName() + " is dead");
         }
         return Checked.of(living, state);
+    }
+
+    /** As {@link #check} for a read, and the entity object must be in a world ({@link EntityState#inWorld()}). */
+    public static Checked checkInWorld(@Nullable Entity entity) {
+        Checked c = check(entity, false);
+        if (c.failure != null) {
+            return c;
+        }
+        if (!c.state.inWorld()) {
+            return Checked.failed("entity " + entity.getName() + " is not in a world");
+        }
+        return c;
     }
 }

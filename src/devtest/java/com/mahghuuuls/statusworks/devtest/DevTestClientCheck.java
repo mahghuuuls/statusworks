@@ -8,7 +8,8 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 /**
  * Calls the API once on the client player, which must report failure: tracked state is server-only. Also reads a
- * contribution group on the client player, which must answer unavailable.
+ * contribution group on the client player, which must answer unavailable, and takes a status snapshot of it, which
+ * must be empty.
  */
 final class DevTestClientCheck {
 
@@ -28,5 +29,7 @@ final class DevTestClientCheck {
         DevTestMod.LOGGER.info("[stw-devtest] client-side apply result: {}", result);
         DevTestMod.LOGGER.info("[stw-devtest] client-side group read: {}",
                 StatusworksApi.contributions().group(mc.player, DevTestMod.id("grouped")));
+        DevTestMod.LOGGER.info("[stw-devtest] client-side snapshot: rows={}",
+                StatusworksApi.statuses().snapshot(mc.player).entries().size());
     }
 }

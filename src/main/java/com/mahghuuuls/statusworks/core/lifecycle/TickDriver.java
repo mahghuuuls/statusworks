@@ -190,6 +190,10 @@ public final class TickDriver {
         // The object left the world it is in: its contribution groups stop being current. A stale report from a world
         // the entity is no longer in does not count.
         if (entity instanceof EntityLivingBase && entity.world == world) {
+            EntityState left = entity.getCapability(EntityState.CAPABILITY, null);
+            if (left != null) {
+                left.setInWorld(false);
+            }
             contributions.leave((EntityLivingBase) entity);
         }
         // Mark participants are classified even without any state of their own.
@@ -242,6 +246,7 @@ public final class TickDriver {
         if (state == null) {
             return;
         }
+        state.setInWorld(true);
         statuses.reportLoad(entity, state);
         // Marks first: until the next tick, the mark store keeps the recorded mark contributions of a joiner.
         marks.onJoin(entity, state);
@@ -280,6 +285,11 @@ public final class TickDriver {
                 marks.onWorldUnload(event.getWorld());
             }
             for (EntityLivingBase dropped : active.forgetWorld(event.getWorld())) {
+                // A world unloaded as a whole (server stop) reports no removal: its objects are no longer in a world.
+                EntityState state = dropped.getCapability(EntityState.CAPABILITY, null);
+                if (state != null && dropped.world == event.getWorld()) {
+                    state.setInWorld(false);
+                }
                 if (diagnosticLog.isEnabled()) {
                     diagnosticLog.note("world-unload dim=" + dim(event.getWorld()) + " dropped entity="
                             + StatusOperations.entityLabel(dropped) + " entityWorldDim=" + dim(dropped.world));

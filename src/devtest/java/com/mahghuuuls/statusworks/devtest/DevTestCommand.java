@@ -48,6 +48,10 @@ import java.util.function.Consumer;
  *   deferred by the pass limit); with {@code arm}, the mana model is armed first. {@code loop peer <mob> [n]}: the
  *   sender and the named mob (its name must start with {@code stwloop}) loop for n notices each (default 12),
  *   started now, and each loop notice reads the other's {@code loop} group. {@code loop off} stops every loop.</li>
+ *   <li>{@code snapshot [self|<entity>]}: logs the status snapshot of the target through the public API, one line
+ *   per row; {@code snapshot keep [<entity>]} also keeps it and {@code snapshot kept} logs the kept one again;
+ *   {@code snapshot hold [<entity>]} holds the entity object and {@code snapshot held} snapshots that object again
+ *   (after it died, unloaded or was replaced).</li>
  *   <li>{@code watch <ticks> [mob]}: logs every group's availability on the sender (and the named mob) at each
  *   server tick start, in the sender's own tick, and at each tick end, for that many ticks.</li>
  * </ul>
@@ -65,6 +69,7 @@ final class DevTestCommand extends CommandBase {
                 + "|load [clear|count]|group <type> <ok|throw|refuse> [times]|group read|group readold"
                 + "|settled <add|throw|off>|mana <reset|accept|arm>|loop <on|off|starttick>"
                 + "|loop count <n> [clearmana] [arm]|loop peer <stwloop mob> [n]|watch <ticks> [mob]|canceljoin [mob]"
+                + "|snapshot [self|<entity>|keep [<entity>]|kept|hold [<entity>]|held]"
                 + "|deepchain>";
     }
 
@@ -310,6 +315,46 @@ final class DevTestCommand extends CommandBase {
                 GroupTestTypes.watchTicks = parseInt(args[1], 1);
                 log(sender, "watch ticks=" + GroupTestTypes.watchTicks + " mob=" + (mob == null ? "none"
                         : mob.getName()) + " tick=" + GroupTestTypes.tick());
+                break;
+            }
+            case "snapshot": {
+                // /stwdev snapshot [self|<entity>] | keep [<entity>] | kept | hold [<entity>] | held
+                String sub = args.length > 1 ? args[1] : "self";
+                if ("kept".equals(sub)) {
+                    if (SnapshotProbe.kept == null) {
+                        throw new CommandException("no snapshot was kept");
+                    }
+                    SnapshotProbe.log("kept", SnapshotProbe.keptLabel, SnapshotProbe.kept);
+                    log(sender, "snapshot kept logged");
+                    break;
+                }
+                if ("held".equals(sub)) {
+                    if (SnapshotProbe.held == null) {
+                        throw new CommandException("no entity object is held");
+                    }
+                    Entity h = SnapshotProbe.held;
+                    DevTestMod.LOGGER.info("[stw-devtest] snapshot held entity={} {}", SnapshotProbe.label(h),
+                            SnapshotProbe.heldState(h));
+                    SnapshotProbe.log("held", SnapshotProbe.label(h), SnapshotProbe.take(h));
+                    log(sender, "snapshot held logged");
+                    break;
+                }
+                boolean keep = "keep".equals(sub);
+                boolean hold = "hold".equals(sub);
+                String targetArg = keep || hold ? (args.length > 2 ? args[2] : "self") : sub;
+                Entity target = "self".equals(targetArg) ? getCommandSenderAsPlayer(sender)
+                        : getEntity(server, sender, targetArg);
+                com.mahghuuuls.statusworks.api.StatusSnapshot snap = SnapshotProbe.take(target);
+                String label = SnapshotProbe.label(target);
+                if (keep) {
+                    SnapshotProbe.kept = snap;
+                    SnapshotProbe.keptLabel = label;
+                }
+                if (hold) {
+                    SnapshotProbe.held = target;
+                }
+                SnapshotProbe.log(keep ? "keep" : hold ? "hold" : "now", label, snap);
+                log(sender, "snapshot " + sub + " " + label + " rows=" + snap.entries().size());
                 break;
             }
             case "canceljoin": {

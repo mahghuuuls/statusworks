@@ -204,6 +204,21 @@ public final class EntityState {
     @Nullable
     private ContributionRecord contributions;
 
+    /**
+     * Whether this entity object is in a world: set when Statusworks hears its join (Forge's join event, before the
+     * world tells its listeners and starts tracking it), cleared when it hears the object leave that world or be
+     * replaced at a respawn or End exit. Runtime only, never saved or copied.
+     */
+    private boolean inWorld;
+
+    public boolean inWorld() {
+        return inWorld;
+    }
+
+    public void setInWorld(boolean inWorld) {
+        this.inWorld = inWorld;
+    }
+
     /** Contribution group state of this entity object; runtime only, never saved. */
     private final GroupStates groups = new GroupStates();
 

@@ -78,6 +78,9 @@ public final class DeathAndClone {
         // The old object is replaced: its contribution groups end for good; the clone becomes current at its join.
         contributions.retire(original);
         EntityState from = original.getCapability(EntityState.CAPABILITY, null);
+        if (from != null) {
+            from.setInWorld(false);
+        }
         EntityState to = clone.getCapability(EntityState.CAPABILITY, null);
         if (from == null || to == null || (from.hasNothingToSave() && from.newerFormat() == null)) {
             return;

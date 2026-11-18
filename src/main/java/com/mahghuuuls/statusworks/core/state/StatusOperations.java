@@ -3,6 +3,7 @@ package com.mahghuuuls.statusworks.core.state;
 import com.mahghuuuls.statusworks.api.CountChange;
 import com.mahghuuuls.statusworks.api.StackChange;
 import com.mahghuuuls.statusworks.api.StatusService;
+import com.mahghuuuls.statusworks.api.StatusSnapshot;
 import com.mahghuuuls.statusworks.api.callback.StatusContext;
 import com.mahghuuuls.statusworks.api.definition.StatusDefinition;
 import com.mahghuuuls.statusworks.core.callback.CallbackRunner;
@@ -410,6 +411,18 @@ public final class StatusOperations implements StatusService {
             return Collections.emptyList();
         }
         return Collections.unmodifiableList(new ArrayList<>(s.groups().keySet()));
+    }
+
+    @Override
+    public StatusSnapshot snapshot(Entity entity) {
+        EntityTargets.Checked target = EntityTargets.checkInWorld(entity);
+        if (target.failure != null) {
+            return StatusSnapshot.EMPTY;
+        }
+        return StatusSnapshots.build(target.state.statuses(), id -> {
+            DefinitionRegistry.Entry entry = registry.status(id);
+            return entry == null ? null : entry.definition();
+        });
     }
 
     @Nullable
